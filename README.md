@@ -2,6 +2,12 @@
 
 Локальное Android-приложение для личного учёта рабочего времени и выплат. Kotlin, Jetpack Compose / Material 3, MVVM, Room и два виджета Jetpack Glance. Интернет и регистрация не требуются; разрешения INTERNET в приложении нет.
 
+## Скачать APK
+
+[Мой табель 0.1.0 — скачать APK](https://github.com/alex-rek/my-tabel/releases/download/v0.1.0/MyTabel-0.1.0-debug.apk) · [Страница релизов](https://github.com/alex-rek/my-tabel/releases)
+
+Для закрытого репозитория нужно войти в GitHub под аккаунтом с доступом. APK подписан отладочным ключом; версия предназначена для установки и проверки.
+
 ## Открытие и сборка
 
 Откройте эту папку в актуальной Android Studio с поддержкой AGP 9.3.1. Требуются JDK 17 или новее (можно использовать встроенный JBR Android Studio), Android SDK Platform 37 и интернет только для первоначальной загрузки зависимостей сборки. Минимальная версия устройства — Android 8 / API 26, compileSdk и targetSdk — 37 / Android 17.
