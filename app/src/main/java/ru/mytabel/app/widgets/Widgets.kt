@@ -25,6 +25,9 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import ru.mytabel.app.TabelApplication
+import ru.mytabel.app.settings.translate
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.*
 import ru.mytabel.app.data.*
@@ -44,20 +47,26 @@ class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
         val employer=dao.employer(selectedEmployer(context,widgetId))
         val active=dao.allShifts().firstOrNull{it.employerId==employer?.id&&it.end==null}
         val now=System.currentTimeMillis()
+        val settings=(context.applicationContext as TabelApplication).settings.state.value
+        val night=settings.theme=="DARK"||(settings.theme=="SYSTEM"&&context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES)
+        val accent=Color(employer?.color ?: ru.mytabel.app.ui.paletteColor(settings.palette))
+        val background=accent.copy(alpha=if(night).28f else .14f).compositeOver(if(night)Color(0xFF10151E)else Color.White)
+        val foreground=ColorProvider(if(night)Color(0xFFF1F4FF)else Color(0xFF172341))
+        fun tr(s:String)=translate(s,settings.language)
         provideContent {
-            androidx.glance.layout.Column(GlanceModifier.fillMaxSize().background(ColorProvider(Color(0xFFE6EDDF))).padding(14.dp),verticalAlignment=androidx.glance.layout.Alignment.Vertical.CenterVertically) {
-                Text(employer?.name ?: "Выберите работодателя",style=TextStyle(color=ColorProvider(Color(0xFF243C2B)),fontSize=18.sp))
+            androidx.glance.layout.Column(GlanceModifier.fillMaxSize().background(ColorProvider(background)).padding(14.dp),verticalAlignment=androidx.glance.layout.Alignment.Vertical.CenterVertically) {
+                Text(employer?.name ?: tr("Выберите работодателя"),style=TextStyle(color=foreground,fontSize=18.sp))
                 if(active!=null) {
-                    Text(hours(((now-active.start)/1000).coerceAtLeast(0)),style=TextStyle(color=ColorProvider(Color(0xFF243C2B)),fontSize=26.sp))
-                    if(expanded)Text("Начало: ${Instant.ofEpochMilli(active.start).atZone(ZoneId.of(employer!!.zone)).format(DateTimeFormatter.ofPattern("dd.MM HH:mm"))}",style=TextStyle(color=ColorProvider(Color(0xFF243C2B))))
-                    Text("Обновлено ${LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))}",style=TextStyle(color=ColorProvider(Color(0xFF4D6350)),fontSize=11.sp))
-                } else Text("Смена не начата",style=TextStyle(color=ColorProvider(Color(0xFF4D6350))))
+                    Text(hours(((now-active.start)/1000).coerceAtLeast(0)),style=TextStyle(color=foreground,fontSize=26.sp))
+                    if(expanded)Text("${tr("Начало:")} ${Instant.ofEpochMilli(active.start).atZone(ZoneId.of(employer!!.zone)).format(DateTimeFormatter.ofPattern("dd.MM HH:mm"))}",style=TextStyle(color=foreground))
+                    Text("${if(settings.language=="en")"Updated" else "Обновлено"} ${LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))}",style=TextStyle(color=foreground,fontSize=11.sp))
+                } else Text(if(settings.language=="en")"Not working" else "Смена не начата",style=TextStyle(color=foreground))
                 val intent=Intent(context,WidgetControlActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
-                androidx.glance.Button(if(employer==null)"Настроить" else if(active==null)"Начать работу" else "Закончить работу",actionStartActivity(intent))
+                androidx.glance.Button(tr(if(employer==null)"Настроить" else if(active==null)"Начать работу" else "Закончить работу"),actionStartActivity(intent),colors=androidx.glance.ButtonDefaults.buttonColors(backgroundColor=ColorProvider(accent),contentColor=ColorProvider(Color.White)))
                 if(expanded) {
                     val config=Intent(context,WidgetConfigurationActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
-                    androidx.glance.Button("Сменить работодателя",actionStartActivity(config))
-                    Text("Время сохранено. Android обновляет виджет периодически.",style=TextStyle(color=ColorProvider(Color(0xFF4D6350)),fontSize=11.sp))
+                    androidx.glance.Button(if(settings.language=="en")"Choose employer" else "Сменить работодателя",actionStartActivity(config),colors=androidx.glance.ButtonDefaults.buttonColors(backgroundColor=ColorProvider(accent),contentColor=ColorProvider(Color.White)))
+                    Text(if(settings.language=="en")"Time is saved. Android refreshes widgets periodically." else "Время сохранено. Android обновляет виджет периодически.",style=TextStyle(color=foreground,fontSize=11.sp))
                 }
             }
         }

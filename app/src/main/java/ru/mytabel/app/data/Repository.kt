@@ -6,7 +6,9 @@ import java.time.Instant
 
 class Repository(val db: TabelDatabase) {
     val dao = db.dao()
-    val snapshot = combine(dao.employers(), dao.shifts(), dao.payments(), dao.templates()) { e, s, p, t -> Snapshot(e, s, p, t) }
+    private val core = combine(dao.employers(), dao.shifts(), dao.payments(), dao.templates()) { e, s, p, t -> Snapshot(e, s, p, t) }
+    val snapshot = combine(core, dao.rules(), dao.scheduleDays(), dao.imports()) { s,r,d,i -> s.copy(rules=r,scheduleDays=d,imports=i) }
+    suspend fun snapshotNow() = db.withTransaction { Snapshot(dao.allEmployers(),dao.allShifts(),dao.allPayments(),dao.allTemplates(),dao.allRules(),dao.allScheduleDays(),dao.allImports()) }
     suspend fun start(employerId: Long) = db.withTransaction {
         val e = requireNotNull(dao.employer(employerId)) { "Работодатель не найден" }
         require(dao.allShifts().none { it.employerId == employerId && it.end == null }) { "У этого работодателя уже идёт смена" }

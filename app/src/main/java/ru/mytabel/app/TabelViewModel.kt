@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import ru.mytabel.app.data.*
 import ru.mytabel.app.widgets.refreshWidgets
 
@@ -16,7 +19,8 @@ class TabelViewModel(app: Application) : AndroidViewModel(app) {
     val errors = messages.receiveAsFlow()
     fun perform(block: suspend Repository.() -> Unit) {
         viewModelScope.launch {
-            try { repository.block(); refreshWidgets(getApplication()) }
+            try { withContext(Dispatchers.IO) { repository.block(); refreshWidgets(getApplication()) } }
+            catch (e: CancellationException) { throw e }
             catch (e: Exception) { messages.send(e.message ?: "Не удалось сохранить данные") }
         }
     }

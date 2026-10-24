@@ -7,7 +7,7 @@ import java.time.*
 data class Employer(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
-    val color: Long = 0xFF55765B,
+    val color: Long = 0xFF00855A,
     val rateCents: Long = 2000,
     val weekStart: Int = 1,
     val workdayStartMinutes: Int = 0,
@@ -34,7 +34,8 @@ data class Shift(
     val end: Long? = null,
     val rateCents: Long,
     val breakMinutes: Int = 0,
-    val comment: String = ""
+    val comment: String = "",
+    val paidSecondsOverride: Long? = null
 )
 
 @Entity(tableName = "payments", foreignKeys = [ForeignKey(entity = Employer::class, parentColumns = ["id"], childColumns = ["employerId"], onDelete = ForeignKey.RESTRICT)], indices = [Index("employerId")])
@@ -50,6 +51,17 @@ data class Payment(
 @Entity(tableName = "report_templates")
 data class ReportTemplate(@PrimaryKey val name: String, val columns: String)
 
-data class Snapshot(val employers: List<Employer> = emptyList(), val shifts: List<Shift> = emptyList(), val payments: List<Payment> = emptyList(), val templates: List<ReportTemplate> = emptyList())
+@Entity(tableName = "schedule_rules", indices = [Index("employerId")])
+data class ScheduleRule(@PrimaryKey(autoGenerate = true) val id: Long = 0, val employerId: Long, val effectiveFrom: Long,
+    val anchor: Long, val pattern: String = "1111100", val startMinutes: Int = 540, val endMinutes: Int = 1080, val breakMinutes: Int = 60)
+
+@Entity(tableName = "schedule_days", primaryKeys = ["employerId", "day"])
+data class ScheduleDay(val employerId: Long, val day: Long, val working: Boolean, val startMinutes: Int = 540, val endMinutes: Int = 1080, val breakMinutes: Int = 60)
+
+@Entity(tableName = "import_records", indices = [Index("employerId")])
+data class ImportRecord(@PrimaryKey val key: String, val employerId: Long, val day: Long, val note: String, val raw: String)
+
+data class Snapshot(val employers: List<Employer> = emptyList(), val shifts: List<Shift> = emptyList(), val payments: List<Payment> = emptyList(), val templates: List<ReportTemplate> = emptyList(),
+    val rules: List<ScheduleRule> = emptyList(), val scheduleDays: List<ScheduleDay> = emptyList(), val imports: List<ImportRecord> = emptyList())
 
 fun Shift.date(employer: Employer): LocalDate = Instant.ofEpochMilli(start).atZone(ZoneId.of(employer.zone)).toLocalDate()

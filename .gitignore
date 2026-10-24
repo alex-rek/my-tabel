@@ -6,3 +6,4 @@ local.properties
 *.iml
 *.log
 .qa-avd/
+**/PrivateCsvFixtureTest.kt

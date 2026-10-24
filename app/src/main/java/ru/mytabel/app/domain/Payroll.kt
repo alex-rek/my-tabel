@@ -22,7 +22,7 @@ object Payroll {
         val complete = shifts.filter { it.employerId == employer.id && it.end != null }.sortedWith(compareBy<Shift> { it.start }.thenBy { it.id })
         for (s in complete) {
             var cursor = Instant.ofEpochMilli(s.start)
-            val end = Instant.ofEpochMilli(s.end!!).minusSeconds(s.breakMinutes * 60L).coerceAtLeast(cursor)
+            val end = if(s.paidSecondsOverride != null) cursor.plusSeconds(s.paidSecondsOverride) else Instant.ofEpochMilli(s.end!!).minusSeconds(s.breakMinutes * 60L).coerceAtLeast(cursor)
             while (cursor < end) {
                 val local = cursor.atZone(zone)
                 var day = local.toLocalDate()
@@ -89,6 +89,6 @@ object Payroll {
     }
 }
 
-fun money(cents: Long): String = BigDecimal(cents).movePointLeft(2).setScale(2).toPlainString() + " $"
+fun money(cents: Long, currency: String = ru.mytabel.app.settings.DisplayPreferences.currency): String = BigDecimal(cents).movePointLeft(2).setScale(2).toPlainString() + " " + when(currency){"USD"->"$";"EUR"->"€";"RUB"->"₽";"GBP"->"£";else->currency}
 fun hours(seconds: Long): String = "%d:%02d".format(seconds / 3600, (seconds % 3600) / 60)
 fun parseMoney(value: String): Long = value.trim().replace(',', '.').toBigDecimal().setScale(2, RoundingMode.UNNECESSARY).movePointRight(2).longValueExact()
