@@ -91,18 +91,25 @@ class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
 }
 class CompactReceiver: GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget=TimeWidget() }
 class ExpandedReceiver: GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget=TimeWidget(true) }
+suspend fun refreshWidget(context:Context,widgetId:Int) {
+    val manager=AppWidgetManager.getInstance(context)
+    val info=manager.getAppWidgetInfo(widgetId) ?: return
+    val widget=when(info.provider){
+        ComponentName(context,CompactReceiver::class.java)->TimeWidget()
+        ComponentName(context,ExpandedReceiver::class.java)->TimeWidget(true)
+        else->return
+    }
+    val glanceId=GlanceAppWidgetManager(context).getGlanceIdBy(widgetId)
+    updateAppWidgetState(context,glanceId){state->
+        state[widgetEmployerKey]=selectedEmployer(context,widgetId)
+        state[widgetRefreshKey]=System.currentTimeMillis()
+    }
+    widget.update(context,glanceId)
+}
 suspend fun refreshWidgets(context: Context) {
-    val manager=GlanceAppWidgetManager(context)
-    listOf(CompactReceiver::class.java to TimeWidget(),ExpandedReceiver::class.java to TimeWidget(true)).forEach{(receiver,widget)->
-        val ids=AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context,receiver))
-        ids.forEach { widgetId ->
-            val glanceId=manager.getGlanceIdBy(widgetId)
-            updateAppWidgetState(context,glanceId){state->
-                state[widgetEmployerKey]=selectedEmployer(context,widgetId)
-                state[widgetRefreshKey]=System.currentTimeMillis()
-            }
-            widget.update(context,glanceId)
-        }
+    val manager=AppWidgetManager.getInstance(context)
+    listOf(CompactReceiver::class.java,ExpandedReceiver::class.java).forEach{receiver->
+        manager.getAppWidgetIds(ComponentName(context,receiver)).forEach{refreshWidget(context,it)}
     }
 }
 class RestoreReceiver: BroadcastReceiver() {
@@ -120,18 +127,30 @@ class WidgetConfigurationActivity: ComponentActivity() {
         if(id==AppWidgetManager.INVALID_APPWIDGET_ID){finish();return}
         setContent {
             var employers by remember{mutableStateOf<List<Employer>>(emptyList())}; var loading by remember{mutableStateOf(true)}
+            var busy by remember{mutableStateOf(false)};var error by remember{mutableStateOf<String?>(null)}
             val scope=rememberCoroutineScope()
-            LaunchedEffect(Unit){employers=TabelDatabase.get(this@WidgetConfigurationActivity).dao().allEmployers();loading=false}
+            LaunchedEffect(Unit){try{employers=TabelDatabase.get(this@WidgetConfigurationActivity).dao().allEmployers()}catch(e:Exception){error=e.message}finally{loading=false}}
             MaterialTheme { Surface(Modifier.fillMaxSize()) { androidx.compose.foundation.layout.Column(Modifier.windowInsetsPadding(WindowInsets.systemBars).padding(24.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 androidx.compose.material3.Text("Работодатель для виджета",style=MaterialTheme.typography.headlineSmall)
-                if(loading)CircularProgressIndicator() else if(employers.isEmpty()) {
+                if(loading)androidx.compose.material3.CircularProgressIndicator() else if(employers.isEmpty()) {
                     androidx.compose.material3.Text("Сначала добавьте рабочее место в приложении.")
                     Button({startActivity(Intent(this@WidgetConfigurationActivity,ru.mytabel.app.MainActivity::class.java));finish()}){androidx.compose.material3.Text("Открыть Мой табель")}
                 }
+                error?.let{androidx.compose.material3.Text(it,color=MaterialTheme.colorScheme.error)}
+                if(busy)androidx.compose.material3.CircularProgressIndicator()
                 employers.forEach{e->Button({
-                    preferences(this@WidgetConfigurationActivity).edit().putLong("employer_$id",e.id).apply()
-                    scope.launch{refreshWidgets(this@WidgetConfigurationActivity);setResult(RESULT_OK,Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,id));finish()}
-                },modifier=Modifier.fillMaxWidth()){androidx.compose.material3.Text(e.name)}}
+                    busy=true;error=null
+                    scope.launch{
+                        try{
+                            val saved=withContext(Dispatchers.IO){preferences(this@WidgetConfigurationActivity).edit().putLong("employer_$id",e.id).commit()}
+                            check(saved){"Не удалось сохранить настройку виджета"}
+                            // Return success even if a launcher delays the Glance update.
+                            setResult(RESULT_OK,Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,id))
+                            try{withTimeout(5000){refreshWidget(this@WidgetConfigurationActivity,id)}}catch(e:Exception){android.util.Log.w("MyTabelWidget","Widget refresh deferred",e)}
+                            finish()
+                        }catch(e:Exception){error=e.message;busy=false}
+                    }
+                },enabled=!busy,modifier=Modifier.fillMaxWidth()){androidx.compose.material3.Text(e.name)}}
             } } }
         }
     }
@@ -152,7 +171,7 @@ class WidgetControlActivity: ComponentActivity() {
                 val shifts=repository.dao.allShifts();active=shifts.any{it.employerId==employerId&&it.end==null};another=shifts.any{it.employerId!=employerId&&it.end==null};ready=true
             }
             MaterialTheme { Surface(Modifier.fillMaxSize()) { androidx.compose.foundation.layout.Column(Modifier.windowInsetsPadding(WindowInsets.systemBars).padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                if(!ready)CircularProgressIndicator() else {
+                if(!ready)androidx.compose.material3.CircularProgressIndicator() else {
                     androidx.compose.material3.Text(employer?.name ?: "Работодатель не найден",style=MaterialTheme.typography.headlineSmall)
                     if(another&&!active)androidx.compose.material3.Text("У другого работодателя уже идёт смена. Можно начать ещё одну одновременно.")
                     error?.let{androidx.compose.material3.Text(it,color=MaterialTheme.colorScheme.error)}
