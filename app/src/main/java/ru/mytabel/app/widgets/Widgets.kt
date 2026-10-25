@@ -18,6 +18,17 @@ import androidx.glance.LocalContext
 import androidx.glance.LocalGlanceId
 import androidx.glance.appwidget.*
 import androidx.glance.appwidget.action.actionStartActivity
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.action.clickable
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.room.withTransaction
+import android.os.SystemClock
+import android.widget.RemoteViews
+import ru.mytabel.app.R
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.currentState
 import androidx.datastore.preferences.core.Preferences
@@ -45,6 +56,12 @@ private fun preferences(context: Context)=context.getSharedPreferences("widgets"
 private fun selectedEmployer(context: Context,id: Int)=preferences(context).getLong("employer_$id",-1)
 
 private val widgetEmployerKey=longPreferencesKey("selected_employer")
+private val parallelWarningKey=booleanPreferencesKey("parallel_warning")
+private val widgetErrorKey=stringPreferencesKey("action_error")
+private val actionEmployerKey=ActionParameters.Key<Long>("employer")
+private val actionKindKey=ActionParameters.Key<String>("kind")
+private val actionShiftKey=ActionParameters.Key<Long>("shift")
+private val actionConfirmedKey=ActionParameters.Key<Boolean>("confirmed")
 private val widgetRefreshKey=longPreferencesKey("refresh_time")
 
 class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
@@ -63,32 +80,72 @@ class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
             val settings by settingsStore.state.collectAsState()
             val employer=employers.firstOrNull{it.id==selected}
             val active=shifts.firstOrNull{it.employerId==employer?.id&&it.end==null}
-            // Reading refresh state ensures explicit refreshes invalidate this composition.
-            val refreshedAt=widgetState[widgetRefreshKey] ?: 0L
-            val now=maxOf(System.currentTimeMillis(),refreshedAt)
             val night=settings.theme=="DARK"||(settings.theme=="SYSTEM"&&context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES)
             val accent=Color(employer?.color ?: ru.mytabel.app.ui.paletteColor(settings.palette))
-            val background=accent.copy(alpha=if(night).28f else .14f).compositeOver(if(night)Color(0xFF10151E)else Color.White)
+            val background=accent.copy(alpha=if(night).20f else .10f).compositeOver(if(night)Color(0xFF10151E)else Color.White)
             val foreground=ColorProvider(if(night)Color(0xFFF1F4FF)else Color(0xFF172341))
             fun tr(s:String)=translate(s,settings.language)
-            androidx.glance.layout.Column(GlanceModifier.fillMaxSize().background(ColorProvider(background)).padding(14.dp),verticalAlignment=androidx.glance.layout.Alignment.Vertical.CenterVertically) {
-                Text(employer?.name ?: tr("Выберите работодателя"),style=TextStyle(color=foreground,fontSize=18.sp))
-                if(active!=null) {
-                    Text(hours(((now-active.start)/1000).coerceAtLeast(0)),style=TextStyle(color=foreground,fontSize=26.sp))
-                    if(expanded)Text("${tr("Начало:")} ${TimeFormats.dateTime(active.start,employer!!.zone,settings.hour24)}",style=TextStyle(color=foreground))
-                    Text("${if(settings.language=="en")"Updated" else "Обновлено"} ${TimeFormats.time(LocalTime.now().hour*60+LocalTime.now().minute,settings.hour24)}",style=TextStyle(color=foreground,fontSize=11.sp))
-                } else Text(if(settings.language=="en")"Not working" else "Смена не начата",style=TextStyle(color=foreground))
-                val intent=Intent(context,WidgetControlActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
-                androidx.glance.Button(tr(if(employer==null)"Настроить" else if(active==null)"Начать работу" else "Закончить работу"),actionStartActivity(intent),colors=androidx.glance.ButtonDefaults.buttonColors(backgroundColor=ColorProvider(accent),contentColor=ColorProvider(Color.White)))
-                if(expanded) {
-                    val config=Intent(context,WidgetConfigurationActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
-                    androidx.glance.Button(if(settings.language=="en")"Choose employer" else "Сменить работодателя",actionStartActivity(config),colors=androidx.glance.ButtonDefaults.buttonColors(backgroundColor=ColorProvider(accent),contentColor=ColorProvider(Color.White)))
-                    Text(if(settings.language=="en")"Time is saved. Android refreshes widgets periodically." else "Время сохранено. Android обновляет виджет периодически.",style=TextStyle(color=foreground,fontSize=11.sp))
+            val config=Intent(context,WidgetConfigurationActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
+            fun action(kind:String,confirmed:Boolean=false)=actionRunCallback<WidgetShiftAction>(actionParametersOf(actionEmployerKey to (employer?.id ?: -1),actionKindKey to kind,actionShiftKey to (active?.id ?: -1),actionConfirmedKey to confirmed))
+            val warning=widgetState[parallelWarningKey]==true&&active==null
+            androidx.glance.layout.Column(GlanceModifier.fillMaxSize().background(ColorProvider(background)).cornerRadius(24.dp).padding(if(expanded)16.dp else 12.dp)) {
+                Text(employer?.name ?: tr("Выберите работодателя"),maxLines=1,style=TextStyle(color=foreground,fontSize=if(expanded)18.sp else 15.sp,fontWeight=androidx.glance.text.FontWeight.Bold))
+                if(expanded)Text(if(settings.language=="en")if(active!=null)"● Working now"else "Ready to start" else if(active!=null)"● Сейчас на работе"else "Готов к началу смены",style=TextStyle(color=ColorProvider(accent),fontSize=12.sp))
+                if(active!=null){
+                    val clock=RemoteViews(context.packageName,R.layout.widget_chronometer)
+                    clock.setChronometer(R.id.widget_clock,SystemClock.elapsedRealtime()-(System.currentTimeMillis()-active.start).coerceAtLeast(0),null,true)
+                    clock.setTextColor(R.id.widget_clock,if(night)android.graphics.Color.WHITE else android.graphics.Color.rgb(23,35,65))
+                    clock.setTextViewTextSize(R.id.widget_clock,android.util.TypedValue.COMPLEX_UNIT_SP,if(expanded)38f else 28f)
+                    AndroidRemoteViews(clock,GlanceModifier.fillMaxWidth().height(if(expanded)54.dp else 40.dp))
+                }else if(!warning)Text("00:00",style=TextStyle(color=foreground,fontSize=if(expanded)38.sp else 28.sp))
+                if(!warning)Text(if(active!=null)"${tr("Начало:")} ${TimeFormats.dateTime(active.start,employer!!.zone,settings.hour24)}" else if(settings.language=="en")"Not working"else "Смена не начата",maxLines=1,style=TextStyle(color=foreground,fontSize=11.sp))
+                if(warning)Text(if(settings.language=="en")"Another job has an active shift. Start another?"else "У другой работы идёт смена. Начать ещё?",style=TextStyle(color=foreground,fontSize=12.sp))
+                widgetState[widgetErrorKey]?.takeIf{it.isNotBlank()}?.let{Text(it,maxLines=2,style=TextStyle(color=foreground,fontSize=11.sp))}
+                Spacer(GlanceModifier.defaultWeight())
+                androidx.glance.layout.Row(GlanceModifier.fillMaxWidth(),verticalAlignment=androidx.glance.layout.Alignment.Vertical.CenterVertically){
+                    val label=if(employer==null)"Настроить"else if(active!=null)"Завершить"else if(warning)"Начать ещё"else "Начать"
+                    androidx.glance.layout.Box(GlanceModifier.defaultWeight().height(40.dp).background(ColorProvider(accent)).cornerRadius(20.dp).clickable(if(employer==null)actionStartActivity(config)else action(if(active==null)"start"else "stop",warning)),contentAlignment=androidx.glance.layout.Alignment.Center){
+                        Text(tr(label),maxLines=1,style=TextStyle(color=ColorProvider(Color.White),fontSize=14.sp,fontWeight=androidx.glance.text.FontWeight.Medium))
+                    }
+                    if(employer!=null){
+                        Spacer(GlanceModifier.width(6.dp))
+                        androidx.glance.layout.Box(GlanceModifier.width(40.dp).height(40.dp).cornerRadius(20.dp).clickable(if(warning)action("cancel")else actionStartActivity(config)),contentAlignment=androidx.glance.layout.Alignment.Center){Text(if(warning)"×"else "⚙",style=TextStyle(color=foreground,fontSize=22.sp))}
+                    }
                 }
             }
         }
     }
 }
+
+// Explicit start/stop commands make repeated taps and stale widget buttons idempotent.
+class WidgetShiftAction:ActionCallback {
+    override suspend fun onAction(context:Context,glanceId:GlanceId,parameters:ActionParameters){
+        val widgetId=GlanceAppWidgetManager(context).getAppWidgetId(glanceId)
+        val employerId=parameters[actionEmployerKey] ?: return
+        val kind=parameters[actionKindKey] ?: return
+        if(selectedEmployer(context,widgetId)!=employerId){refreshWidget(context,widgetId);return}
+        var warning=false;var error=""
+        try{
+            withContext(Dispatchers.IO){
+                val repository=Repository(TabelDatabase.get(context))
+                repository.db.withTransaction{
+                    val shifts=repository.dao.allShifts()
+                    val active=shifts.firstOrNull{it.employerId==employerId&&it.end==null}
+                    when(kind){
+                        "start"->if(active==null){
+                            if(shifts.any{it.employerId!=employerId&&it.end==null}&&parameters[actionConfirmedKey]!=true)warning=true
+                            else repository.start(employerId)
+                        }
+                        "stop"->if(active!=null&&active.id==parameters[actionShiftKey])repository.stop(employerId)
+                    }
+                }
+            }
+        }catch(e:CancellationException){throw e}catch(e:Exception){error=e.message ?: "Не удалось изменить смену"}
+        updateAppWidgetState(context,glanceId){it[parallelWarningKey]=warning;it[widgetErrorKey]=error}
+        refreshWidgets(context)
+    }
+}
+
 class CompactReceiver: GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget=TimeWidget() }
 class ExpandedReceiver: GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget=TimeWidget(true) }
 suspend fun refreshWidget(context:Context,widgetId:Int) {

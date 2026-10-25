@@ -9,6 +9,7 @@ fun translate(text:String,language:String):String {
     return result
 }
 private val translations=mapOf(
+    "Начать" to "Start","Завершить" to "Finish","Начать ещё" to "Start another",
     "Мой табель" to "My Timesheet","Время работает на вас" to "Make your time count","Календарь" to "Calendar","Выплаты" to "Payments","Отчёты" to "Reports","Работа" to "Work","Настройки" to "Settings",
     "Все места" to "All jobs","Сегодня" to "Today","Сейчас на работе" to "On the clock","Начать работу" to "Start work","Закончить работу" to "Finish work","Изменить" to "Edit","Начало:" to "Started:",
     "Ваш отчёт" to "Your report","Выберите период, рабочие места и порядок столбцов." to "Choose dates, employers and column order.","Рабочие места" to "Employers","Работодатель" to "Employer","График" to "Schedule","Настроить" to "Configure",

@@ -246,7 +246,7 @@ private val dark = darkColorScheme(
     OutlinedCard(Modifier.fillMaxWidth(),colors=CardDefaults.outlinedCardColors(containerColor=Color(e.color).copy(alpha=.12f))) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text(e.name,style=MaterialTheme.typography.titleMedium)
         if(shift!=null) {
-            AppText(hours(((now-shift.start)/1000).coerceAtLeast(0)),style=MaterialTheme.typography.headlineMedium)
+            AppText(runningTime((now-shift.start)/1000),modifier=Modifier.semantics{contentDescription="active-timer-${e.id}"},style=MaterialTheme.typography.headlineMedium)
             AppText("Начало: ${TimeFormats.dateTime(shift.start,e.zone,LocalAppSettings.current.hour24)}")
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { Button(stop,colors=ButtonDefaults.buttonColors(containerColor=Color(e.color),contentColor=Color.White)){AppText("Закончить работу")}; TextButton({edit(shift)}){AppText("Изменить")} }
         } else Button(start,colors=ButtonDefaults.buttonColors(containerColor=Color(e.color),contentColor=Color.White)){Icon(Icons.Default.PlayArrow,null);Spacer(Modifier.width(4.dp));AppText("Начать работу")}

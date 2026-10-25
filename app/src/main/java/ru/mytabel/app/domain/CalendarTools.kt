@@ -22,3 +22,5 @@ object TimeFormats {
         return "%02d:%02d".format(Locale.US,encoded,m)
     }
 }
+
+fun runningTime(seconds:Long):String { val value=seconds.coerceAtLeast(0);return java.lang.String.format(java.util.Locale.ROOT,"%d:%02d:%02d",value/3600,value%3600/60,value%60) }

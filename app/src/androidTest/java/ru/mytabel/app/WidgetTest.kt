@@ -32,7 +32,7 @@ class WidgetTest {
             instrumentation.runOnMainSync{
                 val view=RemoteViews(context.packageName,info.previewLayout).apply(context,null)
                 assertTrue(text(view).contains("02:35"));assertFalse(text(view).contains("Error"))
-                val width=if(index==0)180 else 240;val height=if(index==0)140 else 240
+                val width=if(index==0)180 else 240;val height=if(index==0)140 else 200
                 val density=context.resources.displayMetrics.density
                 val w=(width*density).toInt();val h=(height*density).toInt()
                 view.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));view.layout(0,0,w,h)
@@ -62,8 +62,8 @@ class WidgetTest {
                 var actual="";instrumentation.runOnMainSync{actual=views.joinToString(" | "){text(it)}};fail("Missing $expected: $actual")
             }
             refreshWidgets(context);awaitText("Widget regression")
-            repository.start(employer);refreshWidgets(context);awaitText("Закончить работу")
-            repository.stop(employer);refreshWidgets(context);awaitText("Начать работу")
+            repository.start(employer);refreshWidgets(context);awaitText("Завершить")
+            repository.stop(employer);refreshWidgets(context);awaitText("Начать")
             instrumentation.runOnMainSync{host.stopListening()}
         }finally{
             ids.forEach{preferences.edit().remove("employer_$it").commit();host.deleteAppWidgetId(it)}

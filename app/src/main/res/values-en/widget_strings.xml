@@ -5,4 +5,6 @@
 <string name="widget_preview_stop">Finish work</string>
 <string name="widget_preview_choose">Choose employer</string>
 <string name="widget_preview_note">Time is saved.</string>
+<string name="widget_preview_active">● Working now</string>
+<string name="widget_preview_finish">Finish</string>
 </resources>

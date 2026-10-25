@@ -21,6 +21,19 @@ class DeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun activeTimerShowsSecondsAndAdvances(){
+        val dao=TabelDatabase.get(context).dao();var employer=0L
+        runBlocking{employer=dao.saveEmployer(Employer(name="Timer ${System.nanoTime()}"));Repository(TabelDatabase.get(context)).start(employer)}
+        try{
+            val description="active-timer-$employer"
+            compose.waitUntil(15000){compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithContentDescription(description).performScrollTo()
+            fun value()=compose.onNodeWithContentDescription(description).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString(""){it.text}
+            val first=value();assertTrue(first.matches(Regex("[0-9]+:[0-9]{2}:[0-9]{2}")))
+            compose.waitUntil(5000){value()!=first}
+        }finally{runBlocking{dao.allShifts().filter{it.employerId==employer}.forEach{dao.deleteShift(it)};dao.deleteEmptyEmployer(employer)}}
+    }
+
     @Test fun weeklyScheduleUsesConfiguredFirstDayWithoutCycleSchemes(){
         val app=context.applicationContext as TabelApplication;val original=app.settings.state.value;val dao=TabelDatabase.get(context).dao();var employer=0L
         app.settings.update(original.copy(weekStart=7,hour24=false))
