@@ -19,6 +19,10 @@ import androidx.glance.LocalGlanceId
 import androidx.glance.appwidget.*
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.state.PreferencesGlanceStateDefinition
+import androidx.glance.currentState
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.background
 import androidx.glance.layout.*
 import androidx.glance.text.Text
@@ -40,27 +44,39 @@ import java.time.format.DateTimeFormatter
 private fun preferences(context: Context)=context.getSharedPreferences("widgets",Context.MODE_PRIVATE)
 private fun selectedEmployer(context: Context,id: Int)=preferences(context).getLong("employer_$id",-1)
 
+private val widgetEmployerKey=longPreferencesKey("selected_employer")
+private val widgetRefreshKey=longPreferencesKey("refresh_time")
+
 class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
     override val stateDefinition=PreferencesGlanceStateDefinition
     override suspend fun provideGlance(context: Context,id: GlanceId) {
         val widgetId=GlanceAppWidgetManager(context).getAppWidgetId(id)
         val dao=TabelDatabase.get(context).dao()
-        val employer=dao.employer(selectedEmployer(context,widgetId))
-        val active=dao.allShifts().firstOrNull{it.employerId==employer?.id&&it.end==null}
-        val now=System.currentTimeMillis()
-        val settings=(context.applicationContext as TabelApplication).settings.state.value
-        val night=settings.theme=="DARK"||(settings.theme=="SYSTEM"&&context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES)
-        val accent=Color(employer?.color ?: ru.mytabel.app.ui.paletteColor(settings.palette))
-        val background=accent.copy(alpha=if(night).28f else .14f).compositeOver(if(night)Color(0xFF10151E)else Color.White)
-        val foreground=ColorProvider(if(night)Color(0xFFF1F4FF)else Color(0xFF172341))
-        fun tr(s:String)=translate(s,settings.language)
+        val employerFlow=dao.employers();val shiftFlow=dao.shifts()
+        val initialEmployers=dao.allEmployers();val initialShifts=dao.allShifts()
+        val settingsStore=(context.applicationContext as TabelApplication).settings
         provideContent {
+            val widgetState=currentState<Preferences>()
+            val selected=widgetState[widgetEmployerKey] ?: selectedEmployer(context,widgetId)
+            val employers by employerFlow.collectAsState(initialEmployers)
+            val shifts by shiftFlow.collectAsState(initialShifts)
+            val settings by settingsStore.state.collectAsState()
+            val employer=employers.firstOrNull{it.id==selected}
+            val active=shifts.firstOrNull{it.employerId==employer?.id&&it.end==null}
+            // Reading refresh state ensures explicit refreshes invalidate this composition.
+            val refreshedAt=widgetState[widgetRefreshKey] ?: 0L
+            val now=maxOf(System.currentTimeMillis(),refreshedAt)
+            val night=settings.theme=="DARK"||(settings.theme=="SYSTEM"&&context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES)
+            val accent=Color(employer?.color ?: ru.mytabel.app.ui.paletteColor(settings.palette))
+            val background=accent.copy(alpha=if(night).28f else .14f).compositeOver(if(night)Color(0xFF10151E)else Color.White)
+            val foreground=ColorProvider(if(night)Color(0xFFF1F4FF)else Color(0xFF172341))
+            fun tr(s:String)=translate(s,settings.language)
             androidx.glance.layout.Column(GlanceModifier.fillMaxSize().background(ColorProvider(background)).padding(14.dp),verticalAlignment=androidx.glance.layout.Alignment.Vertical.CenterVertically) {
                 Text(employer?.name ?: tr("Выберите работодателя"),style=TextStyle(color=foreground,fontSize=18.sp))
                 if(active!=null) {
                     Text(hours(((now-active.start)/1000).coerceAtLeast(0)),style=TextStyle(color=foreground,fontSize=26.sp))
                     if(expanded)Text("${tr("Начало:")} ${TimeFormats.dateTime(active.start,employer!!.zone,settings.hour24)}",style=TextStyle(color=foreground))
-                    Text("${if(settings.language=="en")"Updated" else "Обновлено"} ${LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))}",style=TextStyle(color=foreground,fontSize=11.sp))
+                    Text("${if(settings.language=="en")"Updated" else "Обновлено"} ${TimeFormats.time(LocalTime.now().hour*60+LocalTime.now().minute,settings.hour24)}",style=TextStyle(color=foreground,fontSize=11.sp))
                 } else Text(if(settings.language=="en")"Not working" else "Смена не начата",style=TextStyle(color=foreground))
                 val intent=Intent(context,WidgetControlActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
                 androidx.glance.Button(tr(if(employer==null)"Настроить" else if(active==null)"Начать работу" else "Закончить работу"),actionStartActivity(intent),colors=androidx.glance.ButtonDefaults.buttonColors(backgroundColor=ColorProvider(accent),contentColor=ColorProvider(Color.White)))
@@ -79,7 +95,14 @@ suspend fun refreshWidgets(context: Context) {
     val manager=GlanceAppWidgetManager(context)
     listOf(CompactReceiver::class.java to TimeWidget(),ExpandedReceiver::class.java to TimeWidget(true)).forEach{(receiver,widget)->
         val ids=AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context,receiver))
-        ids.forEach { widget.update(context,manager.getGlanceIdBy(it)) }
+        ids.forEach { widgetId ->
+            val glanceId=manager.getGlanceIdBy(widgetId)
+            updateAppWidgetState(context,glanceId){state->
+                state[widgetEmployerKey]=selectedEmployer(context,widgetId)
+                state[widgetRefreshKey]=System.currentTimeMillis()
+            }
+            widget.update(context,glanceId)
+        }
     }
 }
 class RestoreReceiver: BroadcastReceiver() {
