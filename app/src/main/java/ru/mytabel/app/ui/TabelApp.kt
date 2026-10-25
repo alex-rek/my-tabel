@@ -28,6 +28,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import ru.mytabel.app.TabelApplication
 import ru.mytabel.app.settings.translate
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import ru.mytabel.app.TabelViewModel
@@ -79,7 +82,7 @@ private val dark = darkColorScheme(
                 IconButton({screen=4}) { Icon(Icons.Default.Settings, translate("Настройки",settings.language)) }
             }) },
             bottomBar = { NavigationBar {
-                listOf("Календарь" to Icons.Default.CalendarMonth, "Выплаты" to Icons.Default.AccountBalanceWallet, "Отчёты" to Icons.Default.Assessment, "Работа" to Icons.Default.Business,"Настройки" to Icons.Default.Settings).forEachIndexed { index, (label, icon) ->
+                listOf("Календарь" to Icons.Default.CalendarMonth, "Выплаты" to Icons.Default.AccountBalanceWallet, "Отчёты" to Icons.Default.Assessment, "Работа" to Icons.Default.Business).forEachIndexed { index, (label, icon) ->
                     NavigationBarItem(screen == index, { screen = index }, icon = { Icon(icon,label) }, label = { AppText(label) })
                 }
             } },
@@ -164,8 +167,8 @@ private val dark = darkColorScheme(
         if(dayOpen)AlertDialog(onDismissRequest={dayOpen=false},title={AppText(day.toString())},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
             val entries=data.shifts.filter{s->chosen.any{it.id==s.employerId&&s.date(it)==day}}
             if(entries.isEmpty())AppText("Нет смен. Добавьте запись или начните работу.")
-            entries.forEach{s->val e=data.employers.first{it.id==s.employerId};OutlinedButton({dayOpen=false;editShift(s)}){AppText("${e.name} · ${Instant.ofEpochMilli(s.start).atZone(ZoneId.of(e.zone)).format(DateTimeFormatter.ofPattern("HH:mm"))} · ${if(settings.language=="en")"Edit" else "Изменить"}")}}
-            chosen.forEach{e->val plan=Schedules.day(e.id,day,data.rules,data.scheduleDays);if(plan.working)AppText("${e.name} · ${if(settings.language=="en")"Planned" else "План"}: ${clock(plan.startMinutes)} – ${clock(plan.endMinutes)}")}
+            entries.forEach{s->val e=data.employers.first{it.id==s.employerId};OutlinedButton({dayOpen=false;editShift(s)}){AppText("${e.name} · ${TimeFormats.dateTime(s.start,e.zone,settings.hour24)} · ${if(settings.language=="en")"Edit" else "Изменить"}")}}
+            chosen.forEach{e->val plan=Schedules.day(e.id,day,data.rules,data.scheduleDays);if(plan.working)AppText("${e.name} · ${if(settings.language=="en")"Planned" else "План"}: ${TimeFormats.time(plan.startMinutes,settings.hour24)} – ${TimeFormats.time(plan.endMinutes,settings.hour24)}")}
             data.imports.filter{it.day==day.toEpochDay()&&it.note.isNotBlank()&&chosen.any{e->e.id==it.employerId}}.forEach{Text(it.note)}
         }},confirmButton={TextButton({dayOpen=false;editShift(null)}){AppText("Добавить время")}},dismissButton={TextButton({dayOpen=false}){AppText("Отмена")}})
         pendingStart?.let { id -> AlertDialog(onDismissRequest={pendingStart=null}, title={AppText("Ещё одна активная смена")},text={AppText("У другого работодателя уже идёт смена. Можно учитывать работу одновременно.")},confirmButton={TextButton({vm.perform { this.start(id) };pendingStart=null}){AppText("Начать ещё одну")}},dismissButton={TextButton({pendingStart=null}){AppText("Отмена")}}) }
@@ -181,15 +184,17 @@ private val dark = darkColorScheme(
 }
 @Composable private fun Calendar(month: YearMonth, selected: LocalDate, employers: List<Employer>, pay: List<ShiftPay>, data:Snapshot, changeMonth: (YearMonth)->Unit, select: (LocalDate)->Unit) {
     val language=LocalAppSettings.current.language
-    Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
+    val firstDay=LocalAppSettings.current.weekStart
+    val threshold=with(LocalDensity.current){56.dp.toPx()}
+    Card(modifier=Modifier.semantics{contentDescription="calendar-month"}.pointerInput(month,threshold){var drag=0f;detectHorizontalDragGestures(onDragStart={drag=0f},onHorizontalDrag={change,amount->drag+=amount;change.consume()},onDragEnd={val step=CalendarTools.monthStep(drag,threshold);if(step!=0L)changeMonth(month.plusMonths(step))})},colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
                 IconButton({changeMonth(month.minusMonths(1))}){Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft,"Предыдущий месяц")}
                 Column(horizontalAlignment=Alignment.CenterHorizontally) { AppText(month.format(DateTimeFormatter.ofPattern("LLLL yyyy",Locale.forLanguageTag(language))).replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.titleLarge); TextButton({changeMonth(YearMonth.now())}){AppText("Сегодня")} }
                 IconButton({changeMonth(month.plusMonths(1))}){Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight,"Следующий месяц")}
             }
-            Row { listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс").forEach { AppText(it,Modifier.weight(1f),style=MaterialTheme.typography.labelMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center) } }
-            val offset=month.atDay(1).dayOfWeek.value-1
+            Row { CalendarTools.weekdays(firstDay).forEach { AppText(listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс")[it-1],Modifier.weight(1f),style=MaterialTheme.typography.labelMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center) } }
+            val offset=CalendarTools.offset(month.atDay(1),firstDay)
             val daily = pay.filter { p -> employers.any { it.id==p.shift.employerId } }.groupBy { p -> p.shift.date(employers.first { it.id==p.shift.employerId }) }
             (0 until (offset+month.lengthOfMonth()+6)/7).forEach { week -> Row(Modifier.fillMaxWidth()) {
                 (0..6).forEach { weekday ->
@@ -242,7 +247,7 @@ private val dark = darkColorScheme(
         Text(e.name,style=MaterialTheme.typography.titleMedium)
         if(shift!=null) {
             AppText(hours(((now-shift.start)/1000).coerceAtLeast(0)),style=MaterialTheme.typography.headlineMedium)
-            AppText("Начало: ${Instant.ofEpochMilli(shift.start).atZone(ZoneId.of(e.zone)).format(DateTimeFormatter.ofPattern("dd.MM HH:mm"))}")
+            AppText("Начало: ${TimeFormats.dateTime(shift.start,e.zone,LocalAppSettings.current.hour24)}")
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { Button(stop,colors=ButtonDefaults.buttonColors(containerColor=Color(e.color),contentColor=Color.White)){AppText("Закончить работу")}; TextButton({edit(shift)}){AppText("Изменить")} }
         } else Button(start,colors=ButtonDefaults.buttonColors(containerColor=Color(e.color),contentColor=Color.White)){Icon(Icons.Default.PlayArrow,null);Spacer(Modifier.width(4.dp));AppText("Начать работу")}
     } }
@@ -255,8 +260,7 @@ private val dark = darkColorScheme(
         val e=employers.first{it.id==s.employerId};val p=pay.firstOrNull{it.shift.id==s.id}
         Card(onClick={edit(s)},modifier=Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(e.color).copy(alpha=.16f))) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(10.dp).background(Color(e.color),CircleShape));Text(e.name,fontWeight=FontWeight.SemiBold)}
-            val zone=ZoneId.of(e.zone);val fmt=DateTimeFormatter.ofPattern("dd.MM HH:mm")
-            AppText("${Instant.ofEpochMilli(s.start).atZone(zone).format(fmt)} — ${s.end?.let{Instant.ofEpochMilli(it).atZone(zone).format(fmt)} ?: "идёт смена"}")
+            AppText("${TimeFormats.dateTime(s.start,e.zone,LocalAppSettings.current.hour24)} — ${s.end?.let{TimeFormats.dateTime(it,e.zone,LocalAppSettings.current.hour24)} ?: "идёт смена"}")
             if(p!=null){AppText("${hours(p.paidSeconds)} оплачено · ${money(p.grossCents)}",style=MaterialTheme.typography.titleMedium);if(p.overtimeSeconds+p.doubleSeconds>0)AppText("Сверхурочно: ${hours(p.overtimeSeconds)} · Двойные: ${hours(p.doubleSeconds)}",style=MaterialTheme.typography.bodySmall)}
             if(s.comment.isNotBlank())Text(s.comment)
         } }

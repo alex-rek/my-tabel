@@ -43,14 +43,23 @@ import java.time.format.DateTimeFormatter
     }
 }
 @Composable fun TimeField(label: String, value: String, change: (String) -> Unit) {
-    val parts=value.split(':');val hour=parts.getOrElse(0){""};val minute=parts.getOrElse(1){""}
+    val hour24=LocalAppSettings.current.hour24
+    val initial=runCatching{parseClock(value)}.getOrDefault(LocalTime.of(9,0))
+    var hour by remember(hour24){mutableStateOf(if(hour24)"%02d".format(initial.hour)else ((initial.hour+11)%12+1).toString())}
+    var minute by remember(hour24){mutableStateOf("%02d".format(initial.minute))}
+    var pm by remember(hour24){mutableStateOf(initial.hour>=12)}
+    fun emit(){change(TimeFormats.encodeInput(hour,minute,pm,hour24)?:"invalid")}
+    LaunchedEffect(value,hour24){val incoming=runCatching{parseClock(value)}.getOrNull();if(incoming!=null&&TimeFormats.encodeInput(hour,minute,pm,hour24)!=incoming.toString()){
+        hour=if(hour24)"%02d".format(incoming.hour)else ((incoming.hour+11)%12+1).toString();minute="%02d".format(incoming.minute);pm=incoming.hour>=12
+    }}
     Column(verticalArrangement=Arrangement.spacedBy(4.dp)){
         AppText(label,style=MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){
-            OutlinedTextField(hour,{change(it.filter(Char::isDigit).take(2)+":"+minute)},label={AppText("Часы")},singleLine=true,modifier=Modifier.weight(1f),textStyle=MaterialTheme.typography.headlineMedium.copy(fontSize=30.sp,textAlign=TextAlign.Center),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
+            OutlinedTextField(hour,{hour=it.filter(Char::isDigit).take(2);emit()},label={AppText("Часы")},singleLine=true,modifier=Modifier.weight(1f),textStyle=MaterialTheme.typography.headlineMedium.copy(fontSize=30.sp,textAlign=TextAlign.Center),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
             AppText(":",style=MaterialTheme.typography.headlineMedium)
-            OutlinedTextField(minute,{change(hour+":"+it.filter(Char::isDigit).take(2))},label={AppText("Минуты")},singleLine=true,modifier=Modifier.weight(1f),textStyle=MaterialTheme.typography.headlineMedium.copy(fontSize=30.sp,textAlign=TextAlign.Center),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
+            OutlinedTextField(minute,{minute=it.filter(Char::isDigit).take(2);emit()},label={AppText("Минуты")},singleLine=true,modifier=Modifier.weight(1f),textStyle=MaterialTheme.typography.headlineMedium.copy(fontSize=30.sp,textAlign=TextAlign.Center),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
         }
+        if(!hour24)Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(!pm,{pm=false;emit()},{AppText("AM")});FilterChip(pm,{pm=true;emit()},{AppText("PM")})}
     }
 }
 fun parseClock(value:String):LocalTime=LocalTime.of(value.substringBefore(':').toInt(),value.substringAfter(':').toInt())
@@ -89,7 +98,7 @@ fun parseClock(value:String):LocalTime=LocalTime.of(value.substringBefore(':').t
     }, error) {
         Field("Название", name) { name = it }; Field("Ставка, $/час", rate) { rate = it }
         Choices("Цвет", listOf(0xFF00855A to "Зелёный", 0xFF1464F4 to "Синий", 0xFFD44A15 to "Оранжевый", 0xFF7C3AED to "Фиолетовый"), color) { color = it }
-        Choices("Начало рабочей недели", (1..7).map { it to listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс")[it-1] }, week) { week = it }
+        Choices("Начало недели для overtime", (1..7).map { it to listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс")[it-1] }, week) { week = it }
         TimeField("Начало рабочего дня", workday) { workday = it }
         Field("Часовой пояс (IANA)", zone) { zone = it }
         Choices("Расчётный период", listOf("WEEK" to "Неделя", "BIWEEK" to "2 недели", "HALF" to "Полмесяца", "MONTH" to "Месяц"), period) { period = it }

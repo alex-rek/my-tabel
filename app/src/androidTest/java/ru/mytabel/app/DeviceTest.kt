@@ -21,14 +21,51 @@ class DeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun weeklyScheduleUsesConfiguredFirstDayWithoutCycleSchemes(){
+        val app=context.applicationContext as TabelApplication;val original=app.settings.state.value;val dao=TabelDatabase.get(context).dao();var employer=0L
+        app.settings.update(original.copy(weekStart=7,hour24=false))
+        runBlocking{employer=dao.saveEmployer(Employer(name="AAA weekly regression"))}
+        try{
+            compose.waitUntil(15000){compose.onAllNodesWithText("AAA weekly regression").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithText("Работа").performClick();compose.onAllNodesWithText("График")[0].performClick()
+            compose.onNodeWithText("График на неделю").assertExists();compose.onNodeWithText("5/2").assertDoesNotExist();compose.onNodeWithText("2/2").assertDoesNotExist()
+            val week=CalendarTools.weekStart(LocalDate.now(),7)
+            compose.onNodeWithText(week.format(java.time.format.DateTimeFormatter.ofPattern("EEE, dd.MM",java.util.Locale.forLanguageTag("ru")))).assertExists()
+            compose.onAllNodes(isToggleable())[0].performClick()
+            compose.onNodeWithText("9:00 AM – 6:00 PM").assertExists()
+            capture("schedule-week-phone.png")
+            compose.onNodeWithText("Сохранить").performClick()
+            compose.waitUntil(10000){runBlocking{dao.allScheduleDays().any{it.employerId==employer&&it.day==week.toEpochDay()&&it.working}}}
+        }finally{app.settings.update(original);runBlocking{dao.allScheduleDays().filter{it.employerId==employer}.forEach{dao.deleteScheduleDay(it)};dao.deleteEmptyEmployer(employer)}}
+    }
+
+    @Test fun calendarSwipesMonthsAndSettingsStayInTopBar(){
+        val dao=TabelDatabase.get(context).dao();var employer=0L
+        runBlocking{employer=dao.saveEmployer(Employer(name="Swipe regression"))}
+        try{
+            compose.waitUntil(15000){compose.onAllNodesWithContentDescription("calendar-month").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithText("Настройки").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Настройки").assertIsDisplayed()
+            val month=YearMonth.now()
+            fun title(m:YearMonth)=m.format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy",java.util.Locale.forLanguageTag("ru"))).replaceFirstChar{it.uppercase()}
+            compose.onNodeWithContentDescription("calendar-month").performTouchInput{swipeLeft()}
+            compose.onNodeWithText(title(month.plusMonths(1))).assertExists()
+            compose.onNodeWithContentDescription("calendar-month").performTouchInput{swipeRight()}
+            compose.onNodeWithText(title(month)).assertExists()
+        }finally{runBlocking{dao.deleteEmptyEmployer(employer)}}
+    }
+
     @Test fun settingsLanguageAndCurrencyAreSaved(){
         val app=context.applicationContext as TabelApplication;val original=app.settings.state.value
         try{
-            compose.onNodeWithText("Настройки").performClick()
+            compose.onNodeWithContentDescription("Настройки").performClick()
+            compose.onNodeWithText("Вс").performScrollTo().performClick()
+            compose.onNodeWithText("12 часов · AM/PM").performScrollTo().performClick()
             compose.onNodeWithText("English").performScrollTo().performClick()
             compose.waitUntil(10000){compose.onAllNodesWithText("Settings").fetchSemanticsNodes().isNotEmpty()}
             compose.onNodeWithText("EUR").performScrollTo().performClick()
             assertEquals("en",app.settings.state.value.language);assertEquals("EUR",app.settings.state.value.currency)
+            assertEquals(7,app.settings.state.value.weekStart);assertFalse(app.settings.state.value.hour24)
             assertEquals(app.settings.state.value,ru.mytabel.app.settings.SettingsStore(context).state.value)
             capture("settings-phone.png")
         }finally{app.settings.update(original)}
@@ -93,7 +130,7 @@ class DeviceTest {
             db.execSQL("INSERT INTO shifts VALUES(1,1,1000,3601000,2050,0,'migration')")
             db.version=1
         }
-        val db=Room.databaseBuilder(context,TabelDatabase::class.java,name).addMigrations(MIGRATION_1_2).build()
+        val db=Room.databaseBuilder(context,TabelDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3).build()
         try{assertEquals(2050,db.dao().allEmployers().single().rateCents);assertEquals(2050,db.dao().allShifts().single().rateCents);assertNull(db.dao().allShifts().single().paidSecondsOverride);assertTrue(db.dao().allRules().isEmpty())}finally{db.close();context.deleteDatabase(name)}
     }
 

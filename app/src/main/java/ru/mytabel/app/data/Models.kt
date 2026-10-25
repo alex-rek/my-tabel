@@ -59,7 +59,8 @@ data class ScheduleRule(@PrimaryKey(autoGenerate = true) val id: Long = 0, val e
 data class ScheduleDay(val employerId: Long, val day: Long, val working: Boolean, val startMinutes: Int = 540, val endMinutes: Int = 1080, val breakMinutes: Int = 60)
 
 @Entity(tableName = "import_records", indices = [Index("employerId")])
-data class ImportRecord(@PrimaryKey val key: String, val employerId: Long, val day: Long, val note: String, val raw: String)
+data class ImportRecord(@PrimaryKey val key: String, val employerId: Long, val day: Long, val note: String, val raw: String,
+    val batchId:String?=null,@ColumnInfo(defaultValue="0") val importedAt:Long=0,val shiftId:Long?=null,val paymentId:Long?=null)
 
 data class Snapshot(val employers: List<Employer> = emptyList(), val shifts: List<Shift> = emptyList(), val payments: List<Payment> = emptyList(), val templates: List<ReportTemplate> = emptyList(),
     val rules: List<ScheduleRule> = emptyList(), val scheduleDays: List<ScheduleDay> = emptyList(), val imports: List<ImportRecord> = emptyList())

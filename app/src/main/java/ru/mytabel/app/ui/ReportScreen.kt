@@ -47,7 +47,7 @@ import ru.mytabel.app.settings.translate
     val html=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")){export(it,"html")}
     fun prepare(action:String){if(busy)return;busy=true;scope.launch{try{
         require(ids.isNotEmpty()){"Выберите работодателя"}
-        val report=withContext(Dispatchers.Default){if(schedule)Reports.schedule(data,ids,LocalDate.parse(from),LocalDate.parse(through),language)else Reports.create(data,ids,LocalDate.parse(from),LocalDate.parse(through),columns,language,settings.currency)}
+        val report=withContext(Dispatchers.Default){if(schedule)Reports.schedule(data,ids,LocalDate.parse(from),LocalDate.parse(through),language,settings.hour24)else Reports.create(data,ids,LocalDate.parse(from),LocalDate.parse(through),columns,language,settings.currency,settings.hour24)}
         if(action=="print")Printing.print(context as android.app.Activity,report)else{pending=report;val name="my-tabel-$from-$through.$action";when(action){"xlsx"->xlsx.launch(name);"docx"->docx.launch(name);else->html.launch(name)}}
     }catch(e:Exception){status=e.message?:"Ошибка"}finally{busy=false}}}
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {

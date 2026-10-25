@@ -39,6 +39,9 @@ import java.time.LocalDate
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
         AppText("Настройки",style=MaterialTheme.typography.headlineMedium)
         Choices("Язык",listOf("ru" to "Русский","en" to "English"),settings.language){update(settings.copy(language=it))}
+        Choices("Первый день рабочей недели",(1..7).map{it to listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс")[it-1]},settings.weekStart){update(settings.copy(weekStart=it))}
+        AppText("Порядок дней календаря и графика. Начало недели для overtime задаётся у работодателя.",style=MaterialTheme.typography.bodySmall)
+        Choices("Формат времени",listOf(true to "24 часа",false to "12 часов · AM/PM"),settings.hour24){update(settings.copy(hour24=it))}
         Choices("Тема",listOf("SYSTEM" to "Системная","LIGHT" to "Светлая","DARK" to "Тёмная"),settings.theme){update(settings.copy(theme=it))}
         Choices("Цветовая схема",listOf("BLUE" to "Синий","PURPLE" to "Фиолетовый","GREEN" to "Зелёный","ORANGE" to "Оранжевый"),settings.palette){update(settings.copy(palette=it))}
         Choices("Валюта",listOf("USD","EUR","RUB","GBP","CAD").map{it to it},settings.currency){update(settings.copy(currency=it))}
@@ -60,6 +63,8 @@ import java.time.LocalDate
         OutlinedButton({restore.launch(arrayOf("application/json","text/*","application/octet-stream"))},enabled=!busy){AppText("Восстановить копию")}
         if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
         if(status.isNotBlank())AppText(status)
+        HorizontalDivider()
+        MaintenancePanel(data,vm,busy){block->task{val message=block();withContext(Dispatchers.IO){refreshWidgets(context)};message}}
         Spacer(Modifier.height(32.dp))
     }
     backupPreview?.let{b->AlertDialog(onDismissRequest={backupPreview=null},title={AppText("Восстановить копию")},text={AppText(if(settings.language=="en")"Add ${b.data.employers.size} employers, ${b.data.shifts.size} shifts and ${b.data.payments.size} transactions. Existing entries are preserved, identical entries are skipped. Restore settings too." else "Добавить ${b.data.employers.size} работодателей, ${b.data.shifts.size} смен и ${b.data.payments.size} операций. Текущие записи сохранятся, одинаковые будут пропущены. Настройки также восстановятся.")},confirmButton={TextButton({backupPreview=null;task{withContext(Dispatchers.IO){Backup.restore(vm.repository,b)};update(b.settings);"Копия восстановлена"}}){AppText("Восстановить копию")}},dismissButton={TextButton({backupPreview=null}){AppText("Отмена")}})}

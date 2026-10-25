@@ -33,6 +33,9 @@ interface TabelDao {
     @Upsert suspend fun saveRule(value: ScheduleRule): Long
     @Upsert suspend fun saveScheduleDay(value: ScheduleDay)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun saveImport(value: ImportRecord): Long
+    @Update suspend fun updateImport(value:ImportRecord)
+    @Delete suspend fun deleteImport(value:ImportRecord)
+    @Delete suspend fun deleteScheduleDay(value:ScheduleDay)
 }
 
 val MIGRATION_1_2 = object : Migration(1,2) {
@@ -46,13 +49,21 @@ val MIGRATION_1_2 = object : Migration(1,2) {
         db.execSQL("CREATE INDEX IF NOT EXISTS index_import_records_employerId ON import_records (employerId)")
     }
 }
-@Database(entities = [Employer::class, Shift::class, Payment::class, ReportTemplate::class, ScheduleRule::class, ScheduleDay::class, ImportRecord::class], version = 2, exportSchema = true)
+val MIGRATION_2_3=object:Migration(2,3){
+    override fun migrate(db:SupportSQLiteDatabase){
+        db.execSQL("ALTER TABLE import_records ADD COLUMN batchId TEXT")
+        db.execSQL("ALTER TABLE import_records ADD COLUMN importedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE import_records ADD COLUMN shiftId INTEGER")
+        db.execSQL("ALTER TABLE import_records ADD COLUMN paymentId INTEGER")
+    }
+}
+@Database(entities = [Employer::class, Shift::class, Payment::class, ReportTemplate::class, ScheduleRule::class, ScheduleDay::class, ImportRecord::class], version = 3, exportSchema = true)
 abstract class TabelDatabase : RoomDatabase() {
     abstract fun dao(): TabelDao
     companion object {
         @Volatile private var instance: TabelDatabase? = null
         fun get(context: Context): TabelDatabase = instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(context.applicationContext, TabelDatabase::class.java, "my-tabel.db").addMigrations(MIGRATION_1_2).build().also { instance = it }
+            instance ?: Room.databaseBuilder(context.applicationContext, TabelDatabase::class.java, "my-tabel.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3).build().also { instance = it }
         }
     }
 }

@@ -22,7 +22,7 @@ val builtInTemplates = linkedMapOf(
 )
 data class ReportData(val columns: List<ReportColumn>, val rows: List<List<String>>, val summary: List<String>, val headers:List<String> = columns.map{it.title},val language:String="ru")
 object Reports {
-    fun create(snapshot: Snapshot, ids: Set<Long>, from: LocalDate, through: LocalDate, columns: List<ReportColumn>,language:String="ru",currency:String="USD"): ReportData {
+    fun create(snapshot: Snapshot, ids: Set<Long>, from: LocalDate, through: LocalDate, columns: List<ReportColumn>,language:String="ru",currency:String="USD",hour24:Boolean=true): ReportData {
         fun money(cents:Long)=ru.mytabel.app.domain.money(cents,currency)
         require(from <= through) { "Начальная дата позже конечной" }
         require(columns.isNotEmpty()) { "Выберите хотя бы один столбец" }
@@ -32,7 +32,7 @@ object Reports {
         val rows = mutableListOf<Pair<Long, Map<ReportColumn, String>>>()
         fun decimal(cents: Long) = java.math.BigDecimal(cents).movePointLeft(2).setScale(2).toPlainString()
         fun decimalHours(seconds: Long) = java.math.BigDecimal(seconds).divide(java.math.BigDecimal(3600), 4, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
-        val time = DateTimeFormatter.ofPattern("HH:mm")
+        val time = DateTimeFormatter.ofPattern(if(hour24)"HH:mm"else"h:mm a",java.util.Locale.US)
         employers.forEach { e ->
             val opening = Payroll.balance(listOf(e), allPay, snapshot.payments, from.minusDays(1)).due
             var running = opening
@@ -45,7 +45,7 @@ object Reports {
                 event.pay?.let { p ->
                     running += p.grossCents
                     row += mapOf(ReportColumn.KIND to "Смена", ReportColumn.START to Instant.ofEpochMilli(p.shift.start).atZone(ZoneId.of(e.zone)).format(time),
-                        ReportColumn.END to Instant.ofEpochMilli(p.shift.end!!).atZone(ZoneId.of(e.zone)).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
+                        ReportColumn.END to Instant.ofEpochMilli(p.shift.end!!).atZone(ZoneId.of(e.zone)).format(DateTimeFormatter.ofPattern(if(hour24)"yyyy-MM-dd HH:mm"else"yyyy-MM-dd h:mm a",java.util.Locale.US)),
                         ReportColumn.DURATION to decimalHours(p.elapsedSeconds), ReportColumn.BREAK to p.shift.breakMinutes.toString(), ReportColumn.PAID to decimalHours(p.paidSeconds),
                         ReportColumn.RATE to decimal(p.shift.rateCents), ReportColumn.REGULAR to decimalHours(p.regularSeconds), ReportColumn.OVERTIME to decimalHours(p.overtimeSeconds),
                         ReportColumn.DOUBLE to decimalHours(p.doubleSeconds), ReportColumn.GROSS to decimal(p.grossCents))
@@ -73,12 +73,12 @@ object Reports {
         return localized(ReportData(visibleColumns, rows.sortedBy { it.first }.map { (_, row) -> visibleColumns.map { row[it].orEmpty() } }, summary),language,currency)
     }
 
-    fun schedule(snapshot:Snapshot,ids:Set<Long>,from:LocalDate,through:LocalDate,language:String="ru"):ReportData {
+    fun schedule(snapshot:Snapshot,ids:Set<Long>,from:LocalDate,through:LocalDate,language:String="ru",hour24:Boolean=true):ReportData {
         require(from<=through && java.time.temporal.ChronoUnit.DAYS.between(from,through)<=3660){"Проверьте диапазон дат (не более 10 лет)"}
         val employers=snapshot.employers.filter{it.id in ids};require(employers.isNotEmpty()){"Выберите работодателя"}
         val columns=listOf(ReportColumn.DATE,ReportColumn.EMPLOYER,ReportColumn.KIND,ReportColumn.START,ReportColumn.END,ReportColumn.BREAK,ReportColumn.PAID)
         var shifts=0;var minutes=0L
-        val rows=buildList{var date=from;while(date<=through){employers.forEach{e->val d=Schedules.day(e.id,date,snapshot.rules,snapshot.scheduleDays);val paid=Schedules.paidMinutes(d);if(d.working){shifts++;minutes+=paid};fun clock(m:Int)="%02d:%02d".format(m/60,m%60)
+        val rows=buildList{var date=from;while(date<=through){employers.forEach{e->val d=Schedules.day(e.id,date,snapshot.rules,snapshot.scheduleDays);val paid=Schedules.paidMinutes(d);if(d.working){shifts++;minutes+=paid};fun clock(m:Int)=TimeFormats.time(m,hour24)
             add(listOf(date.toString(),e.name,if(d.working)"Рабочий день" else "Выходной",if(d.working)clock(d.startMinutes)else"",if(d.working)clock(d.endMinutes)else"",if(d.working)d.breakMinutes.toString()else"",if(d.working)java.math.BigDecimal(paid).divide(java.math.BigDecimal(60),4,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()else""))};date=date.plusDays(1)}}
         val result=localized(ReportData(columns,rows,listOf("График работы · $from — $through","Плановых смен: $shifts; Плановые часы: ${hours(minutes*60)}")),language,"USD")
         return result.copy(headers=result.headers.dropLast(1)+if(language=="en")"Planned hours" else "Плановые часы")

@@ -45,25 +45,30 @@ object LegacyImport {
             }catch(e:Exception){throw IllegalArgumentException("CSV, строка ${index+1}: ${e.message}")}
         })
     }
+    fun stored(raw:String):Row=plan(raw.split('\u001F').joinToString(","){"\"${it.replace("\"","\"\"")}\""}).rows.single()
     suspend fun apply(repository:Repository,plan:Plan,employerId:Long?,name:String,paymentKind:String="ADVANCE"):Pair<Int,Int> = repository.db.withTransaction {
         require(paymentKind in listOf("ADVANCE","SALARY"))
         val dao=repository.dao
         val id=employerId ?: dao.saveEmployer(Employer(name=name.trim().ifBlank{"Импорт Work Hours"},rateCents=plan.rows.last().rate,overtime=false,color=0xFF7C3AED))
         val employer=requireNotNull(dao.employer(id))
         val known=dao.allImports().filter{it.employerId==id}.map{it.key}.toSet()
+        val batchId=java.util.UUID.randomUUID().toString();val importedAt=System.currentTimeMillis()
         var imported=0;var skipped=0
         plan.rows.forEach{row->
             val key="$id:${row.key}"
             if(key in known){skipped++;return@forEach}
-            if(dao.saveImport(ImportRecord(key,id,row.date.toEpochDay(),row.note,row.raw))==-1L){skipped++;return@forEach}
+            val record=ImportRecord(key,id,row.date.toEpochDay(),row.note,row.raw,batchId,importedAt)
+            if(dao.saveImport(record)==-1L){skipped++;return@forEach}
+            var shiftId:Long?=null;var paymentId:Long?=null
             if(row.paidMinutes>0){
                 val zone=ZoneId.of(employer.zone)
                 val start=row.date.atStartOfDay().plusMinutes(row.startMinutes.toLong()).atZone(zone).toInstant().toEpochMilli()
                 var end=row.date.atStartOfDay().plusMinutes(row.endMinutes.toLong()).atZone(zone).toInstant().toEpochMilli()
                 if(end<=start)end=row.date.plusDays(1).atStartOfDay().plusMinutes(row.endMinutes.toLong()).atZone(zone).toInstant().toEpochMilli()
-                dao.saveShift(Shift(employerId=id,start=start,end=end,rateCents=row.rate,breakMinutes=row.rest,comment=row.note,paidSecondsOverride=row.paidMinutes*60L))
+                shiftId=dao.saveShift(Shift(employerId=id,start=start,end=end,rateCents=row.rate,breakMinutes=row.rest,comment=row.note,paidSecondsOverride=row.paidMinutes*60L))
             }
-            if(row.payment>0)dao.savePayment(Payment(employerId=id,day=row.date.toEpochDay(),cents=row.payment,kind=paymentKind,comment="Импорт Work Hours · ${row.note}"))
+            if(row.payment>0)paymentId=dao.savePayment(Payment(employerId=id,day=row.date.toEpochDay(),cents=row.payment,kind=paymentKind,comment="Импорт Work Hours · ${row.note}"))
+            dao.updateImport(record.copy(shiftId=shiftId,paymentId=paymentId))
             imported++
         }
         imported to skipped

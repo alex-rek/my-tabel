@@ -9,6 +9,11 @@ class Repository(val db: TabelDatabase) {
     private val core = combine(dao.employers(), dao.shifts(), dao.payments(), dao.templates()) { e, s, p, t -> Snapshot(e, s, p, t) }
     val snapshot = combine(core, dao.rules(), dao.scheduleDays(), dao.imports()) { s,r,d,i -> s.copy(rules=r,scheduleDays=d,imports=i) }
     suspend fun snapshotNow() = db.withTransaction { Snapshot(dao.allEmployers(),dao.allShifts(),dao.allPayments(),dao.allTemplates(),dao.allRules(),dao.allScheduleDays(),dao.allImports()) }
+    suspend fun saveWeek(days:List<ScheduleDay>,today:java.time.LocalDate)=db.withTransaction{
+        require(days.all{java.time.LocalDate.ofEpochDay(it.day)>=today.minusDays(7)}){"Можно редактировать только последние 7 дней и будущие дни"}
+        days.forEach{require(dao.employer(it.employerId)!=null);ru.mytabel.app.domain.Schedules.validate("1",it.startMinutes,it.endMinutes,it.breakMinutes)}
+        days.forEach{dao.saveScheduleDay(it)}
+    }
     suspend fun start(employerId: Long) = db.withTransaction {
         val e = requireNotNull(dao.employer(employerId)) { "Работодатель не найден" }
         require(dao.allShifts().none { it.employerId == employerId && it.end == null }) { "У этого работодателя уже идёт смена" }

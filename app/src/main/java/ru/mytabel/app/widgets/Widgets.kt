@@ -33,6 +33,7 @@ import kotlinx.coroutines.*
 import ru.mytabel.app.data.*
 import ru.mytabel.app.ui.Choices
 import ru.mytabel.app.domain.hours
+import ru.mytabel.app.domain.TimeFormats
 import java.time.*
 import java.time.format.DateTimeFormatter
 
@@ -58,7 +59,7 @@ class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
                 Text(employer?.name ?: tr("Выберите работодателя"),style=TextStyle(color=foreground,fontSize=18.sp))
                 if(active!=null) {
                     Text(hours(((now-active.start)/1000).coerceAtLeast(0)),style=TextStyle(color=foreground,fontSize=26.sp))
-                    if(expanded)Text("${tr("Начало:")} ${Instant.ofEpochMilli(active.start).atZone(ZoneId.of(employer!!.zone)).format(DateTimeFormatter.ofPattern("dd.MM HH:mm"))}",style=TextStyle(color=foreground))
+                    if(expanded)Text("${tr("Начало:")} ${TimeFormats.dateTime(active.start,employer!!.zone,settings.hour24)}",style=TextStyle(color=foreground))
                     Text("${if(settings.language=="en")"Updated" else "Обновлено"} ${LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))}",style=TextStyle(color=foreground,fontSize=11.sp))
                 } else Text(if(settings.language=="en")"Not working" else "Смена не начата",style=TextStyle(color=foreground))
                 val intent=Intent(context,WidgetControlActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
