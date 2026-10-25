@@ -35,7 +35,9 @@ data class Shift(
     val rateCents: Long,
     val breakMinutes: Int = 0,
     val comment: String = "",
-    val paidSecondsOverride: Long? = null
+    val paidSecondsOverride: Long? = null,
+    val timedBreaks: String? = null,
+    val pauseStartedAt: Long? = null
 )
 
 @Entity(tableName = "payments", foreignKeys = [ForeignKey(entity = Employer::class, parentColumns = ["id"], childColumns = ["employerId"], onDelete = ForeignKey.RESTRICT)], indices = [Index("employerId")])

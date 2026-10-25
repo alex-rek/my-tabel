@@ -46,7 +46,7 @@ object Reports {
                     running += p.grossCents
                     row += mapOf(ReportColumn.KIND to "Смена", ReportColumn.START to Instant.ofEpochMilli(p.shift.start).atZone(ZoneId.of(e.zone)).format(time),
                         ReportColumn.END to Instant.ofEpochMilli(p.shift.end!!).atZone(ZoneId.of(e.zone)).format(DateTimeFormatter.ofPattern(if(hour24)"yyyy-MM-dd HH:mm"else"yyyy-MM-dd h:mm a",java.util.Locale.US)),
-                        ReportColumn.DURATION to decimalHours(p.elapsedSeconds), ReportColumn.BREAK to p.shift.breakMinutes.toString(), ReportColumn.PAID to decimalHours(p.paidSeconds),
+                        ReportColumn.DURATION to decimalHours(p.elapsedSeconds), ReportColumn.BREAK to java.math.BigDecimal(Breaks.seconds(p.shift)).divide(java.math.BigDecimal(60),3,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString(), ReportColumn.PAID to decimalHours(p.paidSeconds),
                         ReportColumn.RATE to decimal(p.shift.rateCents), ReportColumn.REGULAR to decimalHours(p.regularSeconds), ReportColumn.OVERTIME to decimalHours(p.overtimeSeconds),
                         ReportColumn.DOUBLE to decimalHours(p.doubleSeconds), ReportColumn.GROSS to decimal(p.grossCents))
                     if (e.taxMode == "ESTIMATE") row[ReportColumn.ESTIMATE] = decimal(java.math.BigDecimal(p.grossCents).multiply(java.math.BigDecimal(e.estimatePercent)).divide(java.math.BigDecimal(100), 0, java.math.RoundingMode.HALF_UP).toLong())

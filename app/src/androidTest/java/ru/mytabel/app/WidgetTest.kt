@@ -23,7 +23,7 @@ import java.io.File
 class WidgetTest {
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val context get()=instrumentation.targetContext
-    private fun text(view:View):String=when(view){is TextView->view.text.toString();is ViewGroup->(0 until view.childCount).joinToString(" "){text(view.getChildAt(it))};else->""}
+    private fun text(view:View):String=(view.contentDescription?.toString() ?: "")+when(view){is TextView->view.text.toString();is ViewGroup->(0 until view.childCount).joinToString(" "){text(view.getChildAt(it))};else->""}
     @Test fun bothPickerPreviewsHaveImagesAndInflatableLayouts(){
         val manager=AppWidgetManager.getInstance(context)
         listOf(CompactReceiver::class.java,ExpandedReceiver::class.java).forEachIndexed{index,receiver->
@@ -32,7 +32,7 @@ class WidgetTest {
             instrumentation.runOnMainSync{
                 val view=RemoteViews(context.packageName,info.previewLayout).apply(context,null)
                 assertTrue(text(view).contains("02:35"));assertFalse(text(view).contains("Error"))
-                val width=if(index==0)180 else 240;val height=if(index==0)140 else 200
+                val width=if(index==0)180 else 260;val height=if(index==0)140 else 320
                 val density=context.resources.displayMetrics.density
                 val w=(width*density).toInt();val h=(height*density).toInt()
                 view.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));view.layout(0,0,w,h)

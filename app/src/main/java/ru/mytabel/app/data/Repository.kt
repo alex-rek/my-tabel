@@ -19,13 +19,20 @@ class Repository(val db: TabelDatabase) {
         require(dao.allShifts().none { it.employerId == employerId && it.end == null }) { "У этого работодателя уже идёт смена" }
         saveShift(Shift(employerId = e.id, start = Instant.now().toEpochMilli(), rateCents = e.rateCents, breakMinutes = e.breakMinutes))
     }
-    suspend fun stop(employerId: Long) = db.withTransaction {
+    suspend fun stop(employerId: Long, now:Long=System.currentTimeMillis()) = db.withTransaction {
         val shift = dao.allShifts().firstOrNull { it.employerId == employerId && it.end == null } ?: return@withTransaction
-        val now = System.currentTimeMillis()
         require(now >= shift.start) { "Время устройства раньше начала смены. Исправьте время или смену вручную." }
-        dao.saveShift(shift.copy(end = now, breakMinutes = minOf(shift.breakMinutes, ((now - shift.start) / 60000).toInt())))
+        val resumed=ru.mytabel.app.domain.Breaks.resume(shift,now)
+        dao.saveShift(resumed.copy(end=now,breakMinutes=if(resumed.timedBreaks==null)minOf(resumed.breakMinutes,((now-shift.start)/60000).toInt())else(ru.mytabel.app.domain.Breaks.seconds(resumed,now)/60).toInt()))
+    }
+    suspend fun pause(employerId:Long,shiftId:Long,paused:Boolean,now:Long=System.currentTimeMillis())=db.withTransaction{
+        val s=dao.allShifts().firstOrNull{it.employerId==employerId&&it.id==shiftId&&it.end==null} ?: return@withTransaction
+        require(now>=s.start){"Время устройства раньше начала смены"}
+        if(paused && s.pauseStartedAt==null){require(s.paidSecondsOverride==null);val changed=s.copy(timedBreaks=s.timedBreaks ?: "[]",pauseStartedAt=now,breakMinutes=if(s.timedBreaks==null)0 else s.breakMinutes);ru.mytabel.app.domain.Breaks.validate(changed);dao.saveShift(changed)}
+        else if(!paused && s.pauseStartedAt!=null)dao.saveShift(ru.mytabel.app.domain.Breaks.resume(s,now))
     }
     suspend fun saveShift(shift: Shift) = db.withTransaction {
+        ru.mytabel.app.domain.Breaks.validate(shift)
         require(shift.rateCents >= 0 && shift.breakMinutes >= 0) { "Ставка и перерыв не могут быть отрицательными" }
         val others = dao.allShifts().filter { it.employerId == shift.employerId && it.id != shift.id }
         require(shift.end == null || shift.end > shift.start) { "Окончание должно быть позже начала" }

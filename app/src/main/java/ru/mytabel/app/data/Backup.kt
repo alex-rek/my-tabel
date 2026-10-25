@@ -20,7 +20,7 @@ object Backup {
         val s=b.data;val ids=s.employers.map{it.id}.toSet()
         require(ids.size==s.employers.size && ids.all{it>0}){"Повторяющиеся работодатели"}
         s.employers.forEach{require(it.name.isNotBlank()&&it.rateCents>=0&&it.weekStart in 1..7&&it.workdayStartMinutes in 0..1439&&it.dailyHours in 1..24&&it.doubleHours in it.dailyHours..24&&it.weeklyHours in 1..168&&it.overtimePercent in 100..1000&&it.doublePercent in it.overtimePercent..1000&&it.estimatePercent in 0..100);ZoneId.of(it.zone)}
-        s.shifts.forEach{require(it.employerId in ids&&it.rateCents>=0&&it.breakMinutes>=0&&(it.end==null||it.end>it.start)&&(it.paidSecondsOverride==null||it.paidSecondsOverride in 0..86400));Instant.ofEpochMilli(it.start)}
+        s.shifts.forEach{ru.mytabel.app.domain.Breaks.validate(it);require(it.employerId in ids&&it.rateCents>=0&&it.breakMinutes>=0&&(it.end==null||it.end>it.start)&&(it.paidSecondsOverride==null||it.paidSecondsOverride in 0..86400));Instant.ofEpochMilli(it.start)}
         require(s.shifts.filter{it.end==null}.groupBy{it.employerId}.all{it.value.size==1}){"Две активные смены у одного работодателя"}
         s.payments.forEach{require(it.employerId in ids&&it.cents>0&&it.kind in listOf("SALARY","ADVANCE","WITHHOLDING"));LocalDate.ofEpochDay(it.day)}
         s.rules.forEach{require(it.employerId in ids);ru.mytabel.app.domain.Schedules.validate(it.pattern,it.startMinutes,it.endMinutes,it.breakMinutes)}

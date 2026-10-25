@@ -23,9 +23,10 @@ class WidgetPlacementTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val context get()=instrumentation.targetContext
-    private fun texts(view:View):String=when(view){is TextView->view.text.toString();is ViewGroup->(0 until view.childCount).joinToString(" "){texts(view.getChildAt(it))};else->""}
+    private fun texts(view:View):String=(view.contentDescription?.toString() ?: "")+when(view){is TextView->view.text.toString();is ViewGroup->(0 until view.childCount).joinToString(" "){texts(view.getChildAt(it))};else->""}
     private fun matchingText(view:View,label:String):View? {
-        if(view is TextView&&view.text.toString()==label)return view
+        if(view.contentDescription?.toString()==label)return view
+        if(view is TextView&&(view.text.toString()==label||view.text.toString().endsWith(" $label")))return view
         if(view is ViewGroup)for(i in 0 until view.childCount){matchingText(view.getChildAt(i),label)?.let{return it}}
         return null
     }
@@ -34,6 +35,7 @@ class WidgetPlacementTest {
         val names=listOf("Кафе ${System.nanoTime()%1000}","Офис ${System.nanoTime()%1000}")
         val employers=names.mapIndexed{index,name->dao.saveEmployer(Employer(name=name,color=if(index==0)0xFF1464F4 else 0xFFD44A15))}
         val app=context.applicationContext as TabelApplication;val original=app.settings.state.value;app.settings.update(original.copy(theme="LIGHT"))
+        employers.forEach{dao.saveScheduleDay(ScheduleDay(it,java.time.LocalDate.now().toEpochDay(),true,8*60,18*60,30))}
         val manager=AppWidgetManager.getInstance(context);val host=AppWidgetHost(context,731032);val ids=mutableListOf<Int>();val views=mutableListOf<AppWidgetHostView>()
         val preferences=context.getSharedPreferences("widgets",0)
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.BIND_APPWIDGET")
@@ -49,7 +51,7 @@ class WidgetPlacementTest {
                 context.sendBroadcast(Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).setComponent(info.provider).putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS,intArrayOf(id)))
             }
             instrumentation.runOnMainSync{host.startListening()}
-            fun awaitText(index:Int,label:String){compose.waitUntil(30000){var found=false;instrumentation.runOnMainSync{found=texts(views[index]).contains(label)};found}}
+            fun awaitText(index:Int,label:String){compose.waitUntil(30000){var found=false;instrumentation.runOnMainSync{found=matchingText(views[index],label)!=null};found}}
             ids.indices.forEach{index->
                 awaitText(index,"Настроить")
                 instrumentation.runOnMainSync{
@@ -68,7 +70,7 @@ class WidgetPlacementTest {
             instrumentation.runOnMainSync{
                 val container=android.widget.LinearLayout(compose.activity).apply{orientation=android.widget.LinearLayout.VERTICAL}
                 val density=context.resources.displayMetrics.density
-                views.forEachIndexed{index,view->container.addView(view,android.widget.LinearLayout.LayoutParams((if(index==0)220*density else 300*density).toInt(),(if(index==0)160*density else 220*density).toInt()))}
+                views.forEachIndexed{index,view->container.addView(view,android.widget.LinearLayout.LayoutParams((if(index==0)220*density else 340*density).toInt(),(if(index==0)160*density else 340*density).toInt()))}
                 compose.activity.addContentView(container,ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT))
             }
             fun clickControl(index:Int,label:String):View{
@@ -92,11 +94,26 @@ class WidgetPlacementTest {
             clickControl(1,"Начать");awaitText(1,"Начать ещё")
             assertTrue(dao.allShifts().none{it.employerId==employers[1]&&it.end==null})
             clickControl(1,"Начать ещё");awaitText(1,"Завершить")
+            clickControl(1,"Перерыв");awaitText(1,"Продолжить")
+            compose.waitUntil(5000){runBlocking{dao.allShifts().any{it.employerId==employers[1]&&it.pauseStartedAt!=null}}}
+            var net="";instrumentation.runOnMainSync{net=views[1].findViewById<android.widget.Chronometer>(R.id.net_clock).text.toString()}
+            kotlinx.coroutines.delay(1300)
+            instrumentation.runOnMainSync{assertEquals(net,views[1].findViewById<android.widget.Chronometer>(R.id.net_clock).text.toString())}
+            clickControl(1,"Продолжить");awaitText(1,"Перерыв")
+            assertTrue(dao.allShifts().any{it.employerId==employers[1]&&it.pauseStartedAt==null&&it.timedBreaks!=null})
             instrumentation.runOnMainSync{
                 views.forEachIndexed{index,view->
                     val bitmap=android.graphics.Bitmap.createBitmap(view.width,view.height,android.graphics.Bitmap.Config.ARGB_8888)
                     view.draw(android.graphics.Canvas(bitmap))
                     java.io.File(context.getExternalFilesDir(null),"widget-live-${if(index==0)"compact"else "expanded"}.png").outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+                }
+            }
+            app.settings.update(original.copy(theme="DARK"));refreshWidgets(context)
+            compose.waitUntil(10000){var dark=false;instrumentation.runOnMainSync{dark=views[1].findViewById<android.widget.Chronometer>(R.id.widget_clock).currentTextColor==android.graphics.Color.WHITE};dark}
+            instrumentation.runOnMainSync{
+                views.forEachIndexed{index,view->
+                    val bitmap=android.graphics.Bitmap.createBitmap(view.width,view.height,android.graphics.Bitmap.Config.ARGB_8888);view.draw(android.graphics.Canvas(bitmap))
+                    java.io.File(context.getExternalFilesDir(null),"widget-live-${if(index==0)"compact"else "expanded"}-dark.png").outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
                 }
             }
             clickControl(0,"Завершить");awaitText(0,"Начать")
@@ -108,7 +125,7 @@ class WidgetPlacementTest {
             instrumentation.runOnMainSync{host.stopListening()}
             ids.forEach{preferences.edit().remove("employer_$it").commit();host.deleteAppWidgetId(it)}
             instrumentation.uiAutomation.dropShellPermissionIdentity()
-            employers.forEach{id->dao.allShifts().filter{it.employerId==id}.forEach{dao.deleteShift(it)};dao.deleteEmptyEmployer(id)}
+            employers.forEach{id->dao.allScheduleDays().filter{it.employerId==id}.forEach{dao.deleteScheduleDay(it)};dao.allShifts().filter{it.employerId==id}.forEach{dao.deleteShift(it)};dao.deleteEmptyEmployer(id)}
         }
     }
 }

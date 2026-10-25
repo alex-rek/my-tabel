@@ -11,8 +11,8 @@ android {
         applicationId = "ru.mytabel.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 6
-        versionName = "0.3.3"
+        versionCode = 7
+        versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
@@ -23,6 +23,7 @@ android {
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation(platform("androidx.compose:compose-bom:2025.02.00"))
     implementation("androidx.activity:activity-compose:1.10.0")

@@ -92,16 +92,22 @@ class DeviceTest {
             compose.onAllNodesWithText("Time entry regression")[0].performClick()
             compose.onNodeWithContentDescription("day-${LocalDate.now()}").performScrollTo().performClick()
             compose.onNodeWithText("Добавить время").performClick()
+            compose.waitUntil(10000){compose.onAllNodes(hasSetTextAction() and hasText("Часы")).fetchSemanticsNodes().size==2}
+            compose.mainClock.autoAdvance=false
             compose.onAllNodes(hasSetTextAction() and hasText("Часы"))[0].performScrollTo().performTextReplacement("10")
+            compose.mainClock.advanceTimeBy(200)
             compose.onAllNodes(hasSetTextAction() and hasText("Минуты"))[0].performScrollTo().performTextReplacement("40")
+            compose.mainClock.advanceTimeBy(200)
             compose.onAllNodes(hasSetTextAction() and hasText("Часы"))[1].performScrollTo().performTextReplacement("14")
+            compose.mainClock.advanceTimeBy(200)
             compose.onAllNodes(hasSetTextAction() and hasText("Минуты"))[1].performScrollTo().performTextReplacement("30")
+            compose.mainClock.advanceTimeBy(200)
             capture("time-entry-phone.png")
             compose.onNodeWithText("Сохранить").performClick()
             compose.waitUntil(10000){runBlocking{dao.allShifts().any{it.employerId==employer}}}
             val shift=runBlocking{dao.allShifts().single{it.employerId==employer}}
             assertEquals(230*60000L,shift.end!!-shift.start);assertEquals(1735,shift.rateCents)
-        }finally{runBlocking{dao.allShifts().filter{it.employerId==employer}.forEach{dao.deleteShift(it)};dao.deleteEmptyEmployer(employer)}}
+        }finally{compose.mainClock.autoAdvance=true;runBlocking{dao.allShifts().filter{it.employerId==employer}.forEach{dao.deleteShift(it)};dao.deleteEmptyEmployer(employer)}}
     }
 
     @Test fun importAndRestoreAreIdempotentAndPreserveSchedule()=runBlocking<Unit>{
@@ -143,7 +149,7 @@ class DeviceTest {
             db.execSQL("INSERT INTO shifts VALUES(1,1,1000,3601000,2050,0,'migration')")
             db.version=1
         }
-        val db=Room.databaseBuilder(context,TabelDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3).build()
+        val db=Room.databaseBuilder(context,TabelDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4).build()
         try{assertEquals(2050,db.dao().allEmployers().single().rateCents);assertEquals(2050,db.dao().allShifts().single().rateCents);assertNull(db.dao().allShifts().single().paidSecondsOverride);assertTrue(db.dao().allRules().isEmpty())}finally{db.close();context.deleteDatabase(name)}
     }
 

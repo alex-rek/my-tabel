@@ -120,7 +120,7 @@ fun parseClock(value:String):LocalTime=LocalTime.of(value.substringBefore(':').t
 }
 
 @Composable fun ShiftForm(employers: List<Employer>, original: Shift?, selected: Long?, day: LocalDate, dismiss: () -> Unit, save: (Shift) -> Unit, delete: ((Shift) -> Unit)?) {
-    val first = employers.first { it.id == (original?.employerId ?: selected ?: employers.first().id) }
+    val first = employers.firstOrNull { it.id == (original?.employerId ?: selected) } ?: employers.firstOrNull() ?: return
     val zone = ZoneId.of(first.zone)
     val startInitial = original?.let { Instant.ofEpochMilli(it.start).atZone(zone) }
     val endInitial = original?.end?.let { Instant.ofEpochMilli(it).atZone(zone) }
@@ -132,6 +132,7 @@ fun parseClock(value:String):LocalTime=LocalTime.of(value.substringBefore(':').t
     var rate by remember { mutableStateOf((original?.rateCents ?: first.rateCents).toBigDecimal().movePointLeft(2).toPlainString()) }
     var rest by remember { mutableStateOf((original?.breakMinutes ?: first.breakMinutes).toString()) }; var comment by remember { mutableStateOf(original?.comment ?: "") }
     var error by remember { mutableStateOf<String?>(null) }; var confirmDelete by remember { mutableStateOf(false) }
+    var keepTimedBreaks by remember{mutableStateOf(original?.timedBreaks!=null)}
     var keepImportedHours by remember{mutableStateOf(original?.paidSecondsOverride!=null)}
     FormDialog(if(original == null) "Добавить смену" else "Редактировать смену", dismiss, {
         try {
@@ -141,14 +142,16 @@ fun parseClock(value:String):LocalTime=LocalTime.of(value.substringBefore(':').t
                 require(z.rules.getValidOffsets(local).isNotEmpty()) { "Это время пропущено при переводе часов" }
                 return local.atZone(z).toInstant().toEpochMilli()
             }
-            val start = timestamp(startDate,startTime); var end = timestamp(endDate,endTime)
-            if(end < start && endDate == startDate) end = timestamp(LocalDate.parse(endDate).plusDays(1).toString(),endTime)
+            val sameEmployer=original!=null&&employerId==original.employerId
+            val start=if(sameEmployer&&startDate==startInitial?.toLocalDate().toString()&&startTime==startInitial?.format(fmt))original!!.start else timestamp(startDate,startTime)
+            var end=if(sameEmployer&&original?.end!=null&&endDate==endInitial?.toLocalDate().toString()&&endTime==endInitial?.format(fmt))original.end else timestamp(endDate,endTime)
+            if(end < start && endDate == startDate && parseClock(endTime)<parseClock(startTime)) end = timestamp(LocalDate.parse(endDate).plusDays(1).toString(),endTime)
             val breakValue = rest.toInt(); require(breakValue >= 0) { "Перерыв не может быть отрицательным" }
             val active = original != null && original.end == null
             require(active || end > start) { "Окончание должно быть позже начала" }
             require(active || breakValue * 60000L <= end-start) { "Перерыв длиннее смены" }
             val cents = parseMoney(rate); require(cents in 0..10000000000L) { "Проверьте ставку" }
-            save(Shift(original?.id ?: 0, employerId,start, if(active) null else end,cents,breakValue,comment.trim(),if(keepImportedHours)original?.paidSecondsOverride else null))
+            save(Shift(original?.id ?: 0, employerId,start, if(active) null else end,cents,breakValue,comment.trim(),if(keepImportedHours)original?.paidSecondsOverride else null,if(keepTimedBreaks)original?.timedBreaks else null,if(keepTimedBreaks)original?.pauseStartedAt else null))
         } catch(e: Exception) { error = e.message ?: "Проверьте дату и время" }
     }, error) {
         Choices("Работодатель", employers.map { it.id to it.name }, employerId,localize=false) { id -> employerId = id; if(original == null) { val e = employers.first { it.id == id }; rate = e.rateCents.toBigDecimal().movePointLeft(2).toPlainString(); rest = e.breakMinutes.toString() } }
@@ -157,9 +160,11 @@ fun parseClock(value:String):LocalTime=LocalTime.of(value.substringBefore(':').t
             DateField("Дата окончания", endDate) { endDate = it }; TimeField("Окончание", endTime) { endTime = it }
             AppText("Если время окончания раньше начала в той же дате, окончание переносится на следующий день.", style = MaterialTheme.typography.bodySmall)
         } else AppText("Активная смена. Для завершения нажмите «Закончить работу» на главном экране.")
-        Field("Ставка этой смены, $/час", rate) { rate = it }; Field("Неоплачиваемый перерыв, минут", rest) { rest = it }
+        Field("Ставка этой смены, $/час", rate) { rate = it }
+        if(original?.timedBreaks!=null){Toggle("Сохранить измеренные перерывы",keepTimedBreaks){keepTimedBreaks=it};AppText("${if(LocalAppSettings.current.language=="en")"Measured breaks"else"Измеренные перерывы"}: ${runningTime(Breaks.seconds(original))}")}
+        if(!keepTimedBreaks)Field("Неоплачиваемый перерыв, минут",rest){rest=it}
         if(original?.paidSecondsOverride!=null){AppText("${if(LocalAppSettings.current.language=="en")"Imported paid time" else "Оплаченное время из импорта"}: ${hours(original.paidSecondsOverride)}");Toggle(if(LocalAppSettings.current.language=="en")"Keep imported paid hours" else "Сохранить оплаченные часы из импорта",keepImportedHours){keepImportedHours=it}}
-        AppText("Перерыв вычитается из конца смены. Это влияет на распределение часов при переходе рабочего дня.", style = MaterialTheme.typography.bodySmall)
+        if(!keepTimedBreaks)AppText("Перерыв вычитается из конца смены. Это влияет на распределение часов при переходе рабочего дня.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(comment, { comment = it }, label = { AppText("Комментарий") }, modifier = Modifier.fillMaxWidth())
         if(original != null && delete != null) TextButton({ confirmDelete = true }) { AppText("Удалить смену", color = MaterialTheme.colorScheme.error) }
     }

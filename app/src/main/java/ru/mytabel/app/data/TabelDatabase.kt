@@ -57,13 +57,16 @@ val MIGRATION_2_3=object:Migration(2,3){
         db.execSQL("ALTER TABLE import_records ADD COLUMN paymentId INTEGER")
     }
 }
-@Database(entities = [Employer::class, Shift::class, Payment::class, ReportTemplate::class, ScheduleRule::class, ScheduleDay::class, ImportRecord::class], version = 3, exportSchema = true)
+val MIGRATION_3_4=object:Migration(3,4){
+    override fun migrate(db:SupportSQLiteDatabase){db.execSQL("ALTER TABLE shifts ADD COLUMN timedBreaks TEXT");db.execSQL("ALTER TABLE shifts ADD COLUMN pauseStartedAt INTEGER")}
+}
+@Database(entities = [Employer::class, Shift::class, Payment::class, ReportTemplate::class, ScheduleRule::class, ScheduleDay::class, ImportRecord::class], version = 4, exportSchema = true)
 abstract class TabelDatabase : RoomDatabase() {
     abstract fun dao(): TabelDao
     companion object {
         @Volatile private var instance: TabelDatabase? = null
         fun get(context: Context): TabelDatabase = instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(context.applicationContext, TabelDatabase::class.java, "my-tabel.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3).build().also { instance = it }
+            instance ?: Room.databaseBuilder(context.applicationContext, TabelDatabase::class.java, "my-tabel.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4).build().also { instance = it }
         }
     }
 }

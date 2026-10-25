@@ -9,6 +9,8 @@ fun translate(text:String,language:String):String {
     return result
 }
 private val translations=mapOf(
+    "Ставка" to "Rate","Чистое время:" to "Net time:",
+    "Перерыв" to "Break","Продолжить" to "Resume","На перерыве" to "On break","Работаю" to "Working","Готов к работе" to "Ready","Продолжительность смены" to "Shift duration","План" to "Plan","План до" to "Planned end","График на день не задан" to "No schedule for this day","Чистое:" to "Net:","Перерывы:" to "Breaks:","Повторить" to "Retry","Сохранить измеренные перерывы" to "Keep measured breaks",
     "Начать" to "Start","Завершить" to "Finish","Начать ещё" to "Start another",
     "Мой табель" to "My Timesheet","Время работает на вас" to "Make your time count","Календарь" to "Calendar","Выплаты" to "Payments","Отчёты" to "Reports","Работа" to "Work","Настройки" to "Settings",
     "Все места" to "All jobs","Сегодня" to "Today","Сейчас на работе" to "On the clock","Начать работу" to "Start work","Закончить работу" to "Finish work","Изменить" to "Edit","Начало:" to "Started:",

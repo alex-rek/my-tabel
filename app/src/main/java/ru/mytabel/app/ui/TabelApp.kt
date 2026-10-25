@@ -32,6 +32,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import ru.mytabel.app.TabelViewModel
 import ru.mytabel.app.data.*
@@ -69,11 +70,12 @@ private val dark = darkColorScheme(
         var pendingStart by remember { mutableStateOf<Long?>(null) }
         var scheduleEmployer by remember{mutableStateOf<Employer?>(null)}
         var dayOpen by remember{mutableStateOf(false)}
+        LaunchedEffect(data.employers){if(selected!=null&&data.employers.none{it.id==selected}){selected=null;shiftForm=false;dayOpen=false}}
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(vm) { vm.errors.collect { snackbar.showSnackbar(it) } }
         val chosen = data.employers.filter { selected == null || it.id == selected }
         val allPay = remember(data.employers, data.shifts) { data.employers.flatMap { Payroll.calculate(it,data.shifts) } }
-        fun editShift(s: Shift?) { shiftEdit = s; shiftForm = true }
+        fun editShift(s: Shift?) { shiftEdit=s;shiftForm=true }
         fun requestStart(id: Long) {
             if(data.shifts.any { it.end == null && it.employerId != id }) pendingStart = id else vm.perform { this.start(id) }
         }
@@ -114,7 +116,7 @@ private val dark = darkColorScheme(
                         }
                         val details: @Composable () -> Unit = {
                             AppText("Сейчас на работе",style = MaterialTheme.typography.titleMedium)
-                            chosen.forEach { e -> ActiveCard(e,data.shifts.firstOrNull { it.employerId == e.id && it.end == null }, { requestStart(e.id) }, { vm.perform { stop(e.id) } }, { editShift(it) }) }
+                            chosen.forEach { e -> ActiveCard(e,data.shifts.firstOrNull { it.employerId == e.id && it.end == null }, { requestStart(e.id) }, { vm.perform { stop(e.id) } }, { editShift(it) },{ shift -> vm.perform{pause(e.id,shift.id,shift.pauseStartedAt==null)} },!shiftForm&&!dayOpen&&!employerForm&&!paymentForm) }
                             DayDetails(day,chosen,data.shifts,allPay,{ editShift(it) },{ editShift(null) })
                         }
                         if(wide) Row(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -240,14 +242,16 @@ private val dark = darkColorScheme(
         }
     }
 }
-@Composable private fun ActiveCard(e: Employer,shift: Shift?,start:()->Unit,stop:()->Unit,edit:(Shift)->Unit) {
+@Composable private fun ActiveCard(e: Employer,shift: Shift?,start:()->Unit,stop:()->Unit,edit:(Shift)->Unit,pause:(Shift)->Unit,ticking:Boolean) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(shift?.id) { while(shift!=null) { now=System.currentTimeMillis();delay(1000) } }
+    LaunchedEffect(shift?.id,ticking) { while(shift!=null&&ticking) { now=System.currentTimeMillis();delay(1000) } }
     OutlinedCard(Modifier.fillMaxWidth(),colors=CardDefaults.outlinedCardColors(containerColor=Color(e.color).copy(alpha=.12f))) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text(e.name,style=MaterialTheme.typography.titleMedium)
         if(shift!=null) {
             AppText(runningTime((now-shift.start)/1000),modifier=Modifier.semantics{contentDescription="active-timer-${e.id}"},style=MaterialTheme.typography.headlineMedium)
             AppText("Начало: ${TimeFormats.dateTime(shift.start,e.zone,LocalAppSettings.current.hour24)}")
+            AppText("${if(shift.pauseStartedAt!=null)"На перерыве · "else""}Чистое время: ${runningTime(Breaks.worked(shift,now))} · Перерывы: ${runningTime(Breaks.seconds(shift,now))}")
+            OutlinedButton({pause(shift)}){AppText(if(shift.pauseStartedAt==null)"Перерыв"else"Продолжить")}
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { Button(stop,colors=ButtonDefaults.buttonColors(containerColor=Color(e.color),contentColor=Color.White)){AppText("Закончить работу")}; TextButton({edit(shift)}){AppText("Изменить")} }
         } else Button(start,colors=ButtonDefaults.buttonColors(containerColor=Color(e.color),contentColor=Color.White)){Icon(Icons.Default.PlayArrow,null);Spacer(Modifier.width(4.dp));AppText("Начать работу")}
     } }

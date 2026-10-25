@@ -7,4 +7,9 @@
 <string name="widget_preview_note">Время сохранено.</string>
 <string name="widget_preview_active">● Сейчас на работе</string>
 <string name="widget_preview_finish">Завершить</string>
+<string name="widget_preview_duration">Продолжительность смены</string>
+<string name="widget_preview_stats">Начало 08:00     План 8 ч     $18.50/ч</string>
+<string name="widget_preview_plan_end">План до 18:30</string>
+<string name="widget_preview_net">Чистое 4:12:00 · Перерывы 15:00</string>
+<string name="widget_preview_break">Перерыв</string>
 </resources>

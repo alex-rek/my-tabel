@@ -21,16 +21,16 @@ object Payroll {
         val slices = mutableListOf<Slice>()
         val complete = shifts.filter { it.employerId == employer.id && it.end != null }.sortedWith(compareBy<Shift> { it.start }.thenBy { it.id })
         for (s in complete) {
-            var cursor = Instant.ofEpochMilli(s.start)
-            val end = if(s.paidSecondsOverride != null) cursor.plusSeconds(s.paidSecondsOverride) else Instant.ofEpochMilli(s.end!!).minusSeconds(s.breakMinutes * 60L).coerceAtLeast(cursor)
-            while (cursor < end) {
-                val local = cursor.atZone(zone)
-                var day = local.toLocalDate()
-                if (local.toLocalTime().toSecondOfDay() < employer.workdayStartMinutes * 60) day = day.minusDays(1)
-                val boundary = day.plusDays(1).atStartOfDay().plusMinutes(employer.workdayStartMinutes.toLong()).atZone(zone).toInstant()
-                val next = minOf(end, boundary)
-                slices += Slice(s, day, Duration.between(cursor, next).seconds, cursor.toEpochMilli())
-                cursor = next
+            val intervals=if(s.paidSecondsOverride!=null)listOf(s.start to (s.start+s.paidSecondsOverride*1000))else Breaks.workIntervals(s)
+            for(interval in intervals){
+                var cursor=Instant.ofEpochMilli(interval.first);val end=Instant.ofEpochMilli(interval.second)
+                while(cursor<end){
+                    val local=cursor.atZone(zone);var day=local.toLocalDate()
+                    if(local.toLocalTime().toSecondOfDay()<employer.workdayStartMinutes*60)day=day.minusDays(1)
+                    val boundary=day.plusDays(1).atStartOfDay().plusMinutes(employer.workdayStartMinutes.toLong()).atZone(zone).toInstant()
+                    val next=minOf(end,boundary)
+                    slices+=Slice(s,day,((next.toEpochMilli()-s.start)/1000-(cursor.toEpochMilli()-s.start)/1000),cursor.toEpochMilli());cursor=next
+                }
             }
         }
         fun week(day: LocalDate) = day.with(TemporalAdjusters.previousOrSame(DayOfWeek.of(employer.weekStart)))
