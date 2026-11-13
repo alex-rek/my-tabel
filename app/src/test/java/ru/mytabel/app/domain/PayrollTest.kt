@@ -70,6 +70,33 @@ class PayrollTest {
         val p=Payroll.period(e,LocalDate.of(2026,10,18))
         assertEquals(LocalDate.of(2026,10,5),p.from);assertEquals(LocalDate.of(2026,10,18),p.through)
     }
+    @Test fun advanceCarriesAcrossEmptyMonthsAndReportsWithoutBeingCountedTwice() {
+        val e=employer.copy(overtime=false)
+        fun datedShift(id:Long,date:String,hours:Long):Shift {
+            val start=LocalDate.parse(date).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
+            return Shift(id,e.id,start,start+hours*3600000,e.rateCents)
+        }
+        val shifts=listOf(datedShift(1,"2026-10-19",8),datedShift(2,"2026-12-10",8),datedShift(3,"2027-01-10",8))
+        val payments=listOf(Payment(1,1,LocalDate.of(2026,10,20).toEpochDay(),40000,"ADVANCE"),
+            Payment(2,2,LocalDate.of(2026,10,20).toEpochDay(),99999,"ADVANCE"),
+            Payment(3,1,LocalDate.of(2027,2,1).toEpochDay(),99999,"ADVANCE"))
+        val pay=Payroll.calculate(e,shifts)
+        val snapshot=Snapshot(listOf(e),shifts,payments)
+        for((month,expected) in listOf("2026-11" to -24000L,"2026-12" to -8000L,"2027-01" to 8000L)){
+            val range=YearMonth.parse(month)
+            val opening=Payroll.balance(listOf(e),pay,payments,range.atDay(1).minusDays(1))
+            val period=Payroll.balance(listOf(e),pay,payments,range.atEndOfMonth(),range.atDay(1))
+            val closing=Payroll.balance(listOf(e),pay,payments,range.atEndOfMonth())
+            assertEquals(expected,closing.due)
+            assertEquals(opening.due+period.due,closing.due)
+            assertEquals(40000L,closing.received)
+            assertEquals(0L,period.received)
+            val report=Reports.create(snapshot,setOf(1),range.atDay(1),range.atEndOfMonth(),listOf(ReportColumn.KIND,ReportColumn.DUE,ReportColumn.ADVANCE))
+            assertEquals("Входящий остаток",report.rows.first()[0])
+            assertEquals(java.math.BigDecimal(expected).movePointLeft(2).toPlainString(),report.rows.last()[1])
+            assertTrue(report.rows.all{it[2].isEmpty()})
+        }
+    }
     @Test fun estimateTotalsMatchRoundedShiftRows() {
         val e=employer.copy(taxMode="ESTIMATE",estimatePercent=20)
         val pay=Payroll.calculate(e,listOf(shift(1,0,1,rate=3),shift(2,1,1,rate=3)))

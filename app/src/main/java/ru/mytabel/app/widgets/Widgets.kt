@@ -69,6 +69,9 @@ private val actionKindKey=ActionParameters.Key<String>("kind")
 private val actionShiftKey=ActionParameters.Key<Long>("shift")
 private val actionConfirmedKey=ActionParameters.Key<Boolean>("confirmed")
 private val widgetRefreshKey=longPreferencesKey("refresh_time")
+private val pendingKindKey=stringPreferencesKey("pending_kind")
+private val pendingShiftKey=longPreferencesKey("pending_shift")
+private val pendingUntilKey=longPreferencesKey("pending_until")
 
 class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
     override val stateDefinition=PreferencesGlanceStateDefinition
@@ -99,6 +102,10 @@ class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
             val config=Intent(context,WidgetConfigurationActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId)
             fun action(kind:String,confirmed:Boolean=false)=actionRunCallback<WidgetShiftAction>(actionParametersOf(actionEmployerKey to (employer?.id ?: -1),actionKindKey to kind,actionShiftKey to (active?.id ?: -1),actionConfirmedKey to confirmed))
             val warning=widgetState[parallelWarningKey]==true&&active==null
+            val pending=widgetState[pendingKindKey]?.takeIf {
+                now < (widgetState[pendingUntilKey] ?: 0L) &&
+                    (widgetState[pendingShiftKey] ?: -1L)==(active?.id ?: -1L)
+            }
             val error=widgetState[widgetErrorKey]?.takeIf{it.isNotBlank()}
             val status=tr(if(paused)"На перерыве"else if(active!=null)"Работаю"else "Готов к работе")
             val red=Color(0xFFFA3455)
@@ -127,11 +134,12 @@ class TimeWidget(private val expanded: Boolean=false) : GlanceAppWidget() {
             }
             androidx.glance.layout.Column(GlanceModifier.fillMaxSize().background(ImageProvider(widgetGradient(accent,night))).cornerRadius(26.dp).padding(if(expanded)16.dp else 12.dp)){
                 header()
-                if(warning||error!=null){
-                    Text(error ?: if(settings.language=="en")"Another job has an active shift. Start another?"else "У другой работы идёт смена. Начать ещё?",maxLines=3,style=TextStyle(color=foreground,fontSize=12.sp))
+                if(pending!=null||error!=null){
+                    val question=when(pending){"start"->if(warning)"У другой работы идёт смена. Начать ещё?"else"Начать смену?";"stop"->"Завершить смену?";"pause"->"Начать перерыв?";else->"Продолжить работу?"}
+                    Text(error ?: tr(question),maxLines=3,style=TextStyle(color=foreground,fontSize=12.sp))
                     Spacer(GlanceModifier.defaultWeight())
                     androidx.glance.layout.Row(GlanceModifier.fillMaxWidth()){
-                        androidx.glance.Button(tr(if(warning)"Начать ещё"else"Повторить"),action(if(active==null)"start"else"stop",warning),modifier=GlanceModifier.defaultWeight())
+                        androidx.glance.Button(tr(if(pending!=null)"Подтвердить"else"Повторить"),action(pending ?: if(active==null)"start"else"stop",pending!=null),modifier=GlanceModifier.defaultWeight())
                         androidx.glance.Button("×",action("cancel"),modifier=GlanceModifier.width(44.dp))
                     }
                 }else if(!expanded){
@@ -194,7 +202,30 @@ class WidgetShiftAction:ActionCallback {
         val employerId=parameters[actionEmployerKey] ?: return
         val kind=parameters[actionKindKey] ?: return
         if(selectedEmployer(context,widgetId)!=employerId){refreshWidget(context,widgetId);return}
-        var warning=false;var error=""
+        // First tap only asks. Confirmation is bound to this widget and exact shift,
+        // expires after a minute, and is consumed before any database mutation.
+        if(kind=="cancel"){
+            updateAppWidgetState(context,glanceId){it.remove(pendingKindKey);it.remove(pendingShiftKey);it.remove(pendingUntilKey);it[parallelWarningKey]=false;it[widgetErrorKey]=""}
+            refreshWidget(context,widgetId);return
+        }
+        if(kind !in setOf("start","stop","pause","resume"))return
+        if(parameters[actionConfirmedKey]!=true){
+            val shifts=withContext(Dispatchers.IO){TabelDatabase.get(context).dao().allShifts()}
+            val active=shifts.firstOrNull{it.employerId==employerId&&it.end==null}
+            if((active?.id ?: -1L)!=(parameters[actionShiftKey] ?: -1L)){refreshWidget(context,widgetId);return}
+            updateAppWidgetState(context,glanceId){
+                it[pendingKindKey]=kind;it[pendingShiftKey]=active?.id ?: -1L;it[pendingUntilKey]=System.currentTimeMillis()+60_000
+                it[parallelWarningKey]=kind=="start"&&shifts.any{s->s.employerId!=employerId&&s.end==null};it[widgetErrorKey]=""
+            }
+            refreshWidget(context,widgetId);return
+        }
+        var authorized=false
+        updateAppWidgetState(context,glanceId){
+            authorized=it[pendingKindKey]==kind&&it[pendingShiftKey]==parameters[actionShiftKey]&&System.currentTimeMillis()<(it[pendingUntilKey] ?: 0L)
+            it.remove(pendingKindKey);it.remove(pendingShiftKey);it.remove(pendingUntilKey)
+        }
+        if(!authorized){refreshWidget(context,widgetId);return}
+        var error=""
         try{
             withContext(Dispatchers.IO){
                 val repository=Repository(TabelDatabase.get(context))
@@ -203,8 +234,7 @@ class WidgetShiftAction:ActionCallback {
                     val active=shifts.firstOrNull{it.employerId==employerId&&it.end==null}
                     when(kind){
                         "start"->if(active==null){
-                            if(shifts.any{it.employerId!=employerId&&it.end==null}&&parameters[actionConfirmedKey]!=true)warning=true
-                            else repository.start(employerId)
+                            repository.start(employerId)
                         }
                         "pause","resume"->if(active!=null&&active.id==parameters[actionShiftKey])repository.pause(employerId,active.id,kind=="pause")
                         "stop"->if(active!=null&&active.id==parameters[actionShiftKey])repository.stop(employerId)
@@ -212,7 +242,7 @@ class WidgetShiftAction:ActionCallback {
                 }
             }
         }catch(e:CancellationException){throw e}catch(e:Exception){error=e.message ?: "Не удалось изменить смену"}
-        updateAppWidgetState(context,glanceId){it[parallelWarningKey]=warning;it[widgetErrorKey]=error}
+        updateAppWidgetState(context,glanceId){it[parallelWarningKey]=false;it[widgetErrorKey]=error}
         refreshWidgets(context)
     }
 }
@@ -229,7 +259,7 @@ suspend fun refreshWidget(context:Context,widgetId:Int) {
     }
     val glanceId=GlanceAppWidgetManager(context).getGlanceIdBy(widgetId)
     updateAppWidgetState(context,glanceId){state->
-        if(state[widgetEmployerKey]!=selectedEmployer(context,widgetId)){state[parallelWarningKey]=false;state[widgetErrorKey]=""}
+        if(state[widgetEmployerKey]!=selectedEmployer(context,widgetId)){state[parallelWarningKey]=false;state[widgetErrorKey]="";state.remove(pendingKindKey);state.remove(pendingShiftKey);state.remove(pendingUntilKey)}
         state[widgetEmployerKey]=selectedEmployer(context,widgetId)
         state[widgetRefreshKey]=System.currentTimeMillis()
     }

@@ -9,6 +9,9 @@ fun translate(text:String,language:String):String {
     return result
 }
 private val translations=mapOf(
+    "Начать смену?" to "Start shift?","Завершить смену?" to "Finish shift?","Начать перерыв?" to "Start break?","Продолжить работу?" to "Resume work?","Подтвердить" to "Confirm","У другой работы идёт смена. Начать ещё?" to "Another job has an active shift. Start another?",
+    "Начислено за период" to "Earned in period","Получено за период" to "Received in period","Получено всего к концу периода:" to "Total received through period end:",
+    "Авансы и невыплаченный заработок переносятся из предыдущих периодов. Отрицательный остаток — аванс в счёт будущего заработка." to "Advances and unpaid earnings carry forward from earlier periods. A negative balance is an advance against future earnings.",
     "Ставка" to "Rate","Чистое время:" to "Net time:",
     "Перерыв" to "Break","Продолжить" to "Resume","На перерыве" to "On break","Работаю" to "Working","Готов к работе" to "Ready","Продолжительность смены" to "Shift duration","План" to "Plan","План до" to "Planned end","График на день не задан" to "No schedule for this day","Чистое:" to "Net:","Перерывы:" to "Breaks:","Повторить" to "Retry","Сохранить измеренные перерывы" to "Keep measured breaks",
     "Начать" to "Start","Завершить" to "Finish","Начать ещё" to "Start another",

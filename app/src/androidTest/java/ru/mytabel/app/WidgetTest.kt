@@ -23,6 +23,70 @@ import java.io.File
 class WidgetTest {
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private val context get()=instrumentation.targetContext
+    @Test fun widgetActionsRequireFreshConfirmationAndCanBeCancelled()=runBlocking {
+        val repository=Repository(TabelDatabase.get(context))
+        val employer=repository.dao.saveEmployer(Employer(name="Widget confirmation regression"))
+        val manager=AppWidgetManager.getInstance(context);val host=AppWidgetHost(context,731033)
+        val preferences=context.getSharedPreferences("widgets",0);val ids=mutableListOf<Int>()
+        instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.BIND_APPWIDGET")
+        try{
+            instrumentation.runOnMainSync{host.startListening()}
+            for(receiver in listOf(CompactReceiver::class.java,ExpandedReceiver::class.java)){
+                val id=host.allocateAppWidgetId();ids.add(id)
+                assertTrue(manager.bindAppWidgetIdIfAllowed(id,ComponentName(context,receiver)))
+                preferences.edit().putLong("employer_$id",employer).commit();refreshWidget(context,id)
+                lateinit var view:AppWidgetHostView
+                instrumentation.runOnMainSync{view=host.createView(context,id,manager.getAppWidgetInfo(id))}
+                suspend fun awaitLabel(label:String){
+                    val deadline=System.currentTimeMillis()+15000
+                    while(System.currentTimeMillis()<deadline){var found=false;instrumentation.runOnMainSync{found=text(view).contains(label)};if(found)return;kotlinx.coroutines.delay(100)}
+                    fail("Missing widget label: $label")
+                }
+                val glanceId=androidx.glance.appwidget.GlanceAppWidgetManager(context).getGlanceIdBy(id)
+                suspend fun action(kind:String,shift:Long=-1L,confirmed:Boolean=false){
+                    WidgetShiftAction().onAction(context,glanceId,androidx.glance.action.actionParametersOf(
+                        androidx.glance.action.ActionParameters.Key<Long>("employer") to employer,
+                        androidx.glance.action.ActionParameters.Key<String>("kind") to kind,
+                        androidx.glance.action.ActionParameters.Key<Long>("shift") to shift,
+                        androidx.glance.action.ActionParameters.Key<Boolean>("confirmed") to confirmed))
+                }
+                suspend fun active()=repository.dao.allShifts().singleOrNull{it.employerId==employer&&it.end==null}
+                action("start",confirmed=true);assertNull(active())
+                action("start");assertNull(active())
+                action("cancel");action("start",confirmed=true);assertNull(active())
+                action("start")
+                androidx.glance.appwidget.state.updateAppWidgetState(context,glanceId){it[androidx.datastore.preferences.core.longPreferencesKey("pending_until")]=0L}
+                action("start",confirmed=true);assertNull(active())
+                action("start");awaitLabel("Начать смену?");awaitLabel("Подтвердить")
+                instrumentation.runOnMainSync{
+                    fun find(node:View):View? {
+                        if(node is TextView&&node.text.toString()=="Подтвердить")return node
+                        if(node is ViewGroup)for(i in 0 until node.childCount)find(node.getChildAt(i))?.let{return it}
+                        return null
+                    }
+                    var button=find(view) ?: error("Confirmation button missing")
+                    while(!button.isClickable&&button.parent is View)button=button.parent as View
+                    assertTrue(button.performClick())
+                }
+                awaitLabel("Завершить")
+                val shift=active()!!
+                action("stop",shift.id);assertNotNull(active())
+                action("cancel");action("stop",shift.id,true);assertNotNull(active())
+                action("pause",shift.id);assertNull(active()!!.pauseStartedAt)
+                action("pause",shift.id,true);assertNotNull(active()!!.pauseStartedAt)
+                action("resume",shift.id);assertNotNull(active()!!.pauseStartedAt)
+                action("resume",shift.id,true);assertNull(active()!!.pauseStartedAt)
+                action("stop",shift.id);action("stop",shift.id,true);assertNull(active())
+                action("start",confirmed=true);assertNull(active())
+            }
+        }finally{
+            instrumentation.runOnMainSync{host.stopListening()}
+            ids.forEach{preferences.edit().remove("employer_$it").commit();host.deleteAppWidgetId(it)}
+            instrumentation.uiAutomation.dropShellPermissionIdentity()
+            repository.dao.allShifts().filter{it.employerId==employer}.forEach{repository.dao.deleteShift(it)}
+            repository.dao.deleteEmptyEmployer(employer)
+        }
+    }
     private fun text(view:View):String=(view.contentDescription?.toString() ?: "")+when(view){is TextView->view.text.toString();is ViewGroup->(0 until view.childCount).joinToString(" "){text(view.getChildAt(it))};else->""}
     @Test fun bothPickerPreviewsHaveImagesAndInflatableLayouts(){
         val manager=AppWidgetManager.getInstance(context)

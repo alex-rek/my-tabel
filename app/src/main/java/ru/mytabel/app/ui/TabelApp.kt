@@ -230,15 +230,16 @@ private val dark = darkColorScheme(
             val entries = pay.filter { p -> employers.any { it.id == p.shift.employerId && p.shift.date(it) in from..through } }
             AppText("${hours(entries.sumOf { it.paidSeconds })} оплачено · ${entries.size} смен",style=MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                Column { AppText("Начислено"); AppText(money(balance.gross),style=MaterialTheme.typography.titleLarge) }
-                Column { AppText("Получено"); AppText(money(balance.received),style=MaterialTheme.typography.titleLarge) }
+                Column { AppText("Начислено за период"); AppText(money(balance.gross),style=MaterialTheme.typography.titleLarge) }
+                Column { AppText("Получено за период"); AppText(money(balance.received),style=MaterialTheme.typography.titleLarge) }
             }
             if(employers.any{it.taxMode=="MANUAL"}) AppText("Фактические удержания: ${money(balance.actual)}")
             AppText("Входящий остаток: ${money(opening.due)}",style=MaterialTheme.typography.bodySmall)
+            AppText("Получено всего к концу периода: ${money(closing.received)}",style=MaterialTheme.typography.bodySmall)
             AppText("Осталось к выплате",style=MaterialTheme.typography.labelLarge)
             AppText(money(closing.due),style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.SemiBold)
             if(employers.any{it.taxMode=="ESTIMATE"}) AppText("Оценка удержаний за период: ${money(balance.estimate)}. Показана отдельно и не вычитается из долга.",style=MaterialTheme.typography.bodySmall)
-            AppText("Отрицательный остаток означает переплату. Активные смены не включены.",style=MaterialTheme.typography.bodySmall)
+            AppText("Авансы и невыплаченный заработок переносятся из предыдущих периодов. Отрицательный остаток — аванс в счёт будущего заработка. Активные смены не включены.",style=MaterialTheme.typography.bodySmall)
         }
     }
 }

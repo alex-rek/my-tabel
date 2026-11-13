@@ -82,7 +82,9 @@ class WidgetPlacementTest {
                 }
                 return clicked!!
             }
-            val staleStart=clickControl(0,"Начать");awaitText(0,"Завершить")
+            clickControl(0,"Начать");awaitText(0,"Подтвердить")
+            assertTrue(dao.allShifts().none{it.employerId==employers[0]&&it.end==null})
+            clickControl(0,"Подтвердить");awaitText(0,"Завершить")
             compose.onNodeWithText("Отмена").assertDoesNotExist()
             compose.waitUntil(10000){runBlocking{dao.allShifts().count{it.employerId==employers[0]&&it.end==null}==1}}
             WidgetShiftAction().onAction(context,androidx.glance.appwidget.GlanceAppWidgetManager(context).getGlanceIdBy(ids[0]),androidx.glance.action.actionParametersOf(androidx.glance.action.ActionParameters.Key<Long>("employer") to employers[0],androidx.glance.action.ActionParameters.Key<String>("kind") to "start",androidx.glance.action.ActionParameters.Key<Long>("shift") to -1L))
@@ -91,15 +93,15 @@ class WidgetPlacementTest {
             var initial=""
             instrumentation.runOnMainSync{initial=views[0].findViewById<android.widget.Chronometer>(R.id.widget_clock).text.toString()}
             compose.waitUntil(5000){var changed=false;instrumentation.runOnMainSync{changed=views[0].findViewById<android.widget.Chronometer>(R.id.widget_clock).text.toString()!=initial};changed}
-            clickControl(1,"Начать");awaitText(1,"Начать ещё")
+            clickControl(1,"Начать");awaitText(1,"Подтвердить")
             assertTrue(dao.allShifts().none{it.employerId==employers[1]&&it.end==null})
-            clickControl(1,"Начать ещё");awaitText(1,"Завершить")
-            clickControl(1,"Перерыв");awaitText(1,"Продолжить")
+            clickControl(1,"Подтвердить");awaitText(1,"Завершить")
+            clickControl(1,"Перерыв");awaitText(1,"Подтвердить");clickControl(1,"Подтвердить");awaitText(1,"Продолжить")
             compose.waitUntil(5000){runBlocking{dao.allShifts().any{it.employerId==employers[1]&&it.pauseStartedAt!=null}}}
             var net="";instrumentation.runOnMainSync{net=views[1].findViewById<android.widget.Chronometer>(R.id.net_clock).text.toString()}
             kotlinx.coroutines.delay(1300)
             instrumentation.runOnMainSync{assertEquals(net,views[1].findViewById<android.widget.Chronometer>(R.id.net_clock).text.toString())}
-            clickControl(1,"Продолжить");awaitText(1,"Перерыв")
+            clickControl(1,"Продолжить");awaitText(1,"Подтвердить");clickControl(1,"Подтвердить");awaitText(1,"Перерыв")
             assertTrue(dao.allShifts().any{it.employerId==employers[1]&&it.pauseStartedAt==null&&it.timedBreaks!=null})
             instrumentation.runOnMainSync{
                 views.forEachIndexed{index,view->
@@ -116,9 +118,11 @@ class WidgetPlacementTest {
                     java.io.File(context.getExternalFilesDir(null),"widget-live-${if(index==0)"compact"else "expanded"}-dark.png").outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
                 }
             }
-            clickControl(0,"Завершить");awaitText(0,"Начать")
+            clickControl(0,"Завершить");awaitText(0,"Подтвердить");clickControl(0,"×");awaitText(0,"Завершить")
+            assertTrue(dao.allShifts().any{it.employerId==employers[0]&&it.end==null})
+            clickControl(0,"Завершить");awaitText(0,"Подтвердить");clickControl(0,"Подтвердить");awaitText(0,"Начать")
             assertTrue(dao.allShifts().any{it.employerId==employers[1]&&it.end==null})
-            clickControl(1,"Завершить");awaitText(1,"Начать")
+            clickControl(1,"Завершить");awaitText(1,"Подтвердить");clickControl(1,"Подтвердить");awaitText(1,"Начать")
             assertEquals(employers[0],preferences.getLong("employer_${ids[0]}",-1));assertEquals(employers[1],preferences.getLong("employer_${ids[1]}",-1))
         }finally{
             app.settings.update(original)

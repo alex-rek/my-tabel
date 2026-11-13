@@ -65,6 +65,8 @@ object Reports {
         val closing = Payroll.balance(employers, allPay, snapshot.payments, through)
         val summary = mutableListOf("Мой табель · $from — $through · $currency", "Смен: ${selectedPay.size}; оплачено часов: ${decimalHours(selectedPay.sumOf { it.paidSeconds })}",
             "Начислено: ${money(period.gross)}; получено: ${money(period.received)}", "Входящий остаток: ${money(Payroll.balance(employers, allPay, snapshot.payments, from.minusDays(1)).due)}; осталось с переносом: ${money(closing.due)}")
+        summary += "Получено всего к концу периода: ${money(closing.received)}"
+        summary += "Авансы и невыплаченный заработок переносятся из предыдущих периодов. Отрицательный остаток — аванс в счёт будущего заработка."
         if (employers.any { it.taxMode == "MANUAL" }) summary += "Фактические удержания: ${money(period.actual)}"
         if (employers.any { it.taxMode == "ESTIMATE" }) summary += "Оценочные удержания: ${money(period.estimate)} (не фактические; не вычитаются из остатка)"
         summary += "Смены относятся к дате начала; расчёт overtime учитывает полные рабочие недели. Выплаты и удержания — отдельные строки."
