@@ -9,6 +9,14 @@ fun translate(text:String,language:String):String {
     return result
 }
 private val translations=mapOf(
+    "Обновление приложения" to "App update","Установлена версия:" to "Installed version:","Источник: GitHub" to "Source: GitHub",
+    "Проверить обновления" to "Check for updates","Проверка обновлений…" to "Checking for updates…","Загрузка APK:" to "Downloading APK:",
+    "Установлена последняя версия" to "The latest version is installed","Доступна версия:" to "Available version:","Скачать обновление" to "Download update","Установить" to "Install",
+    "Android запросит подтверждение установки. Данные приложения сохранятся." to "Android will ask you to confirm installation. Your app data will be kept.",
+    "Разрешите установку из этого источника, вернитесь и нажмите «Установить»." to "Allow installation from this source, return and tap Install.",
+    "Лимит запросов GitHub. Повторите позже." to "GitHub rate limit reached. Try again later.","Релизы GitHub недоступны. Проверьте доступ к репозиторию." to "GitHub releases are unavailable. Check repository access.",
+    "Не удалось проверить обновления" to "Could not check for updates","Не удалось скачать обновление" to "Could not download the update",
+    "Контрольная сумма APK не совпадает" to "APK checksum mismatch","Подпись APK отличается от установленного приложения" to "APK signature does not match the installed app","APK загружен не полностью" to "APK download is incomplete",
     "Начать смену?" to "Start shift?","Завершить смену?" to "Finish shift?","Начать перерыв?" to "Start break?","Продолжить работу?" to "Resume work?","Подтвердить" to "Confirm","У другой работы идёт смена. Начать ещё?" to "Another job has an active shift. Start another?",
     "Начислено за период" to "Earned in period","Получено за период" to "Received in period","Получено всего к концу периода:" to "Total received through period end:",
     "Авансы и невыплаченный заработок переносятся из предыдущих периодов. Отрицательный остаток — аванс в счёт будущего заработка." to "Advances and unpaid earnings carry forward from earlier periods. A negative balance is an advance against future earnings.",

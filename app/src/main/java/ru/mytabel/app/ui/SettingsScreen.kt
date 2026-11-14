@@ -38,6 +38,7 @@ import java.time.LocalDate
     val restore=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)task{backupPreview=withContext(Dispatchers.Default){Backup.decode(read(uri))};"Копия прочитана"}}
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
         AppText("Настройки",style=MaterialTheme.typography.headlineMedium)
+        UpdatePanel()
         Choices("Язык",listOf("ru" to "Русский","en" to "English"),settings.language){update(settings.copy(language=it))}
         Choices("Первый день рабочей недели",(1..7).map{it to listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс")[it-1]},settings.weekStart){update(settings.copy(weekStart=it))}
         AppText("Порядок дней календаря и графика. Начало недели для overtime задаётся у работодателя.",style=MaterialTheme.typography.bodySmall)
